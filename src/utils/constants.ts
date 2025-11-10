@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenCheck, LibraryBig, LineChart, Settings } from 'lucide-react'
+import { BarChart3, BellRing, BookOpenCheck, LibraryBig, LineChart, Settings } from 'lucide-react'
 
 export const navigationLinks = [
   {
@@ -23,6 +23,11 @@ export const navigationLinks = [
     label: 'Analytics',
     icon: LineChart,
     to: '/analytics',
+  },
+  {
+    label: 'Notifications',
+    icon: BellRing,
+    to: '/notifications',
   },
   {
     label: 'Resources',
@@ -51,6 +56,27 @@ export const specialLessonTypeOptions = [
   { value: 'Assessment', label: 'Assessment' },
   { value: 'Mixed Practice', label: 'Mixed Practice' },
 ] as const
+
+export const notificationAudienceOptions = [
+  { value: 'all', label: 'All students' },
+  { value: 'grade', label: 'Specific grade' },
+  { value: 'unit', label: 'Specific unit' },
+  { value: 'lesson', label: 'Specific lesson' },
+  { value: 'custom', label: 'Custom segment' },
+] as const
+
+export const notificationChannelOptions = [
+  { value: 'in-app', label: 'In-app banner' },
+  { value: 'email', label: 'Email' },
+  { value: 'push', label: 'Push notification' },
+] as const
+
+export const notificationStatusBadges: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
+  draft: { label: 'Draft', variant: 'secondary' },
+  scheduled: { label: 'Scheduled', variant: 'outline' },
+  sent: { label: 'Sent', variant: 'default' },
+  cancelled: { label: 'Cancelled', variant: 'destructive' },
+}
 
 export const statusOptions = [
   { value: 'active', label: 'Active' },

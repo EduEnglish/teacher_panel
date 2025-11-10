@@ -35,6 +35,7 @@ import type {
   CurriculumCounts,
   Grade,
   Lesson,
+  Notification,
   PracticeAggregate,
   Question,
   Quiz,
@@ -113,6 +114,7 @@ type CollectionName =
   | 'admin'
   | 'adminLogs'
   | 'specialLessons'
+  | 'notifications'
 
 type EntityMap = {
   grades: Grade
@@ -125,6 +127,7 @@ type EntityMap = {
   admin: AdminProfile
   adminLogs: AdminActionLog
   specialLessons: SpecialLesson
+  notifications: Notification
 }
 
 function fromDoc<T>(snapshot: DocumentSnapshot<DocumentData, DocumentData>): T {
@@ -228,6 +231,73 @@ export const questionService = createCollectionService('questions')
 export const practiceService = createCollectionService('practiceData')
 export const adminProfileService = createCollectionService('admin')
 export const specialLessonService = createCollectionService('specialLessons')
+export const notificationService = createCollectionService('notifications')
+
+export async function sendNotification(notificationId: string, adminId: string, metadata?: Record<string, unknown>) {
+  const docRef = doc(db, 'notifications', notificationId)
+  await updateDoc(docRef, {
+    deliveryStatus: 'sent',
+    sentAt: serverTimestamp(),
+    scheduledAt: null,
+    updatedAt: serverTimestamp(),
+  })
+  await logAdminAction({
+    adminId,
+    action: 'update',
+    entity: 'notifications',
+    entityId: notificationId,
+    metadata: {
+      ...metadata,
+      deliveryStatus: 'sent',
+    },
+  })
+}
+
+export async function scheduleNotification(
+  notificationId: string,
+  scheduledAt: Date,
+  adminId: string,
+  metadata?: Record<string, unknown>,
+) {
+  const docRef = doc(db, 'notifications', notificationId)
+  await updateDoc(docRef, {
+    deliveryStatus: 'scheduled',
+    scheduledAt,
+    sentAt: null,
+    updatedAt: serverTimestamp(),
+  })
+  await logAdminAction({
+    adminId,
+    action: 'update',
+    entity: 'notifications',
+    entityId: notificationId,
+    metadata: {
+      ...metadata,
+      deliveryStatus: 'scheduled',
+      scheduledAt: scheduledAt.toISOString(),
+    },
+  })
+}
+
+export async function cancelNotification(notificationId: string, adminId: string, metadata?: Record<string, unknown>) {
+  const docRef = doc(db, 'notifications', notificationId)
+  await updateDoc(docRef, {
+    deliveryStatus: 'cancelled',
+    scheduledAt: null,
+    sentAt: null,
+    updatedAt: serverTimestamp(),
+  })
+  await logAdminAction({
+    adminId,
+    action: 'update',
+    entity: 'notifications',
+    entityId: notificationId,
+    metadata: {
+      ...metadata,
+      deliveryStatus: 'cancelled',
+    },
+  })
+}
 
 export async function uploadFile(path: string, file: File | Blob) {
   const storageRef = ref(storage, path)

@@ -16,14 +16,21 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const allowedAdminEmail = import.meta.env.VITE_ALLOWED_ADMIN_EMAIL?.toLowerCase().trim() ?? ''
 
   useEffect(() => {
     const unsubscribe = onAuthStateChangedListener((firebaseUser) => {
+      if (firebaseUser && allowedAdminEmail && firebaseUser.email?.toLowerCase() !== allowedAdminEmail) {
+        void firebaseLogout()
+        setUser(null)
+        setIsLoading(false)
+        return
+      }
       setUser(firebaseUser)
       setIsLoading(false)
     })
     return () => unsubscribe()
-  }, [])
+  }, [allowedAdminEmail])
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -33,7 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async login(email, password) {
         setIsLoading(true)
         try {
-          await firebaseLogin(email, password)
+          const authenticatedUser = await firebaseLogin(email, password)
+          if (allowedAdminEmail && authenticatedUser.email?.toLowerCase() !== allowedAdminEmail) {
+            await firebaseLogout()
+            setUser(null)
+            throw new Error('You are not authorised to access the Teacher Panel.')
+          }
         } finally {
           setIsLoading(false)
         }
@@ -46,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await requestPasswordReset(email)
       },
     }),
-    [user, isLoading],
+    [user, isLoading, allowedAdminEmail],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

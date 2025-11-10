@@ -4,6 +4,9 @@ export type EntityStatus = 'active' | 'inactive'
 export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words'
 export type LessonType = 'Grammar' | 'Vocabulary' | 'Reading' | 'Listening'
 export type SpecialLessonType = 'Revision' | 'Assessment' | 'Mixed Practice'
+export type NotificationAudience = 'all' | 'grade' | 'unit' | 'lesson' | 'custom'
+export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled'
+export type NotificationChannel = 'in-app' | 'email' | 'push'
 
 export interface BaseEntity {
   id: string
@@ -142,6 +145,20 @@ export interface AdminActionLog extends BaseEntity {
   entityId: string
   metadata?: Record<string, unknown>
   timestamp?: Timestamp | null
+}
+
+export interface Notification extends BaseEntity {
+  title: string
+  message: string
+  audienceType: NotificationAudience
+  audienceValue?: string
+  channels: NotificationChannel[]
+  scheduledAt?: Timestamp | null
+  sentAt?: Timestamp | null
+  createdBy: string
+  metadata?: Record<string, unknown>
+  deliveryStatus: NotificationStatus
+  deliveryProcessed?: boolean
 }
 
 export interface CurriculumCounts {

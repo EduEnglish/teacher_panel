@@ -14,6 +14,7 @@ import { QuizzesPage } from '@/pages/curriculum/QuizzesPage'
 import { SpecialLessonsPage } from '@/pages/curriculum/SpecialLessonsPage'
 import { AnalyticsPage } from '@/pages/analytics/AnalyticsPage'
 import { SettingsPage } from '@/pages/settings/SettingsPage'
+import { NotificationsPage } from '@/pages/notifications/NotificationsPage'
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
                   <Route path="special-lessons" element={<SpecialLessonsPage />} />
                 </Route>
                 <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="*" element={<Navigate to="/dashboard" replace />} />
               </Route>
