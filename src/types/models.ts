@@ -3,7 +3,6 @@ import type { Timestamp } from 'firebase/firestore'
 export type EntityStatus = 'active' | 'inactive'
 export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words'
 export type LessonType = 'Grammar' | 'Vocabulary' | 'Reading' | 'Listening'
-export type SpecialLessonType = 'Revision' | 'Assessment' | 'Mixed Practice'
 export type NotificationAudience = 'all' | 'grade' | 'unit' | 'lesson' | 'custom'
 export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled'
 export type NotificationChannel = 'in-app' | 'email' | 'push'
@@ -34,15 +33,6 @@ export interface Lesson extends BaseEntity {
   type: LessonType
   description?: string
   order: number
-}
-
-export interface SpecialLesson extends BaseEntity {
-  gradeId: string
-  title: string
-  lessonType: SpecialLessonType
-  sourceUnitIds: string[]
-  linkedQuizIds: string[]
-  description?: string
 }
 
 export interface Section extends BaseEntity {
@@ -115,26 +105,11 @@ export interface PracticeAggregate extends BaseEntity {
   quizType?: QuizType
 }
 
-export interface AnalyticsSnapshot {
-  totalExercises: number
-  averageAccuracy: number
-  mostPracticedUnit?: string
-  mostChallengingLesson?: string
-}
-
-export interface LessonAnalyticsRow {
-  lessonId: string
-  lessonTitle: string
-  attempts: number
-  accuracy: number
-}
-
 export interface AdminProfile extends BaseEntity {
   name: string
   email: string
   logoUrl?: string
   logoStoragePath?: string
-  analyticsEnabled: boolean
   weaknessThreshold: number
 }
 
@@ -159,6 +134,27 @@ export interface Notification extends BaseEntity {
   metadata?: Record<string, unknown>
   deliveryStatus: NotificationStatus
   deliveryProcessed?: boolean
+}
+
+export interface Student extends BaseEntity {
+  name: string
+  email?: string
+  gradeId?: string
+  photoURL?: string
+  enrolledAt?: Timestamp | null
+  lastActiveAt?: Timestamp | null
+}
+
+export interface StudentPerformance {
+  studentId: string
+  studentName: string
+  gradeId?: string
+  gradeName?: string
+  totalAttempts: number
+  totalCorrect: number
+  averageAccuracy: number
+  quizzesCompleted: number
+  lastActivityAt?: Timestamp | null
 }
 
 export interface CurriculumCounts {

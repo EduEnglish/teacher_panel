@@ -26,9 +26,9 @@ import {
   type QueryConstraint,
   type DocumentSnapshot,
   type DocumentData,
+  type Timestamp,
 } from 'firebase/firestore'
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject, type FirebaseStorage } from 'firebase/storage'
-import { getAnalytics, isSupported, type Analytics } from 'firebase/analytics'
 import type {
   AdminActionLog,
   AdminProfile,
@@ -40,7 +40,8 @@ import type {
   Question,
   Quiz,
   Section,
-  SpecialLesson,
+  Student,
+  StudentPerformance,
   Unit,
 } from '@/types/models'
 
@@ -70,21 +71,10 @@ const auth: Auth = getAuth(app)
 const db: Firestore = getFirestore(app)
 const storage: FirebaseStorage = getStorage(app)
 
-let analyticsPromise: Promise<Analytics | null> | null = null
-
 export const firebaseApp = app
 export const firebaseAuth = auth
 export const firestore = db
 export const firebaseStorage = storage
-
-export async function getFirebaseAnalytics() {
-  if (!analyticsPromise) {
-    analyticsPromise = isSupported()
-      .then((supported) => (supported ? getAnalytics(app) : null))
-      .catch(() => null)
-  }
-  return analyticsPromise
-}
 
 export function onAuthStateChangedListener(callback: (user: User | null) => void) {
   return onAuthStateChanged(auth, callback)
@@ -113,8 +103,8 @@ type CollectionName =
   | 'practiceData'
   | 'admin'
   | 'adminLogs'
-  | 'specialLessons'
   | 'notifications'
+  | 'users'
 
 type EntityMap = {
   grades: Grade
@@ -126,8 +116,8 @@ type EntityMap = {
   practiceData: PracticeAggregate
   admin: AdminProfile
   adminLogs: AdminActionLog
-  specialLessons: SpecialLesson
   notifications: Notification
+  users: Student
 }
 
 function fromDoc<T>(snapshot: DocumentSnapshot<DocumentData, DocumentData>): T {
@@ -230,8 +220,8 @@ export const quizService = createCollectionService('quizzes')
 export const questionService = createCollectionService('questions')
 export const practiceService = createCollectionService('practiceData')
 export const adminProfileService = createCollectionService('admin')
-export const specialLessonService = createCollectionService('specialLessons')
 export const notificationService = createCollectionService('notifications')
+export const studentService = createCollectionService('users')
 
 export async function sendNotification(notificationId: string, adminId: string, metadata?: Record<string, unknown>) {
   const docRef = doc(db, 'notifications', notificationId)
@@ -381,57 +371,6 @@ export async function computeDashboardCounts(): Promise<CurriculumCounts> {
   }
 }
 
-export async function fetchAccuracyByUnit(): Promise<Array<{ unitId: string; unitTitle: string; accuracy: number }>> {
-  const [unitsSnap, practiceSnap] = await Promise.all([getDocs(collection(db, 'units')), getDocs(collection(db, 'practiceData'))])
-  const unitTitleMap = new Map(unitsSnap.docs.map((unit) => [unit.id, (unit.data() as Unit).title]))
-
-  const aggregation = new Map<string, { attempts: number; correct: number }>()
-  practiceSnap.docs.forEach((docSnap) => {
-    const data = docSnap.data() as PracticeAggregate
-    if (!data.unitId) return
-    const entry = aggregation.get(data.unitId) ?? { attempts: 0, correct: 0 }
-    aggregation.set(data.unitId, {
-      attempts: entry.attempts + (data.attempts ?? 0),
-      correct: entry.correct + (data.correct ?? 0),
-    })
-  })
-
-  return Array.from(aggregation.entries()).map(([unitId, value]) => ({
-    unitId,
-    unitTitle: unitTitleMap.get(unitId) ?? 'Unknown Unit',
-    accuracy: value.attempts ? Number(((value.correct / value.attempts) * 100).toFixed(2)) : 0,
-  }))
-}
-
-export async function fetchQuizTypeDistribution(): Promise<Record<string, number>> {
-  const practiceSnap = await getDocs(collection(db, 'practiceData'))
-  const distribution = new Map<string, number>()
-  practiceSnap.docs.forEach((docSnap) => {
-    const data = docSnap.data() as PracticeAggregate
-    if (!data.quizType) return
-    distribution.set(data.quizType, (distribution.get(data.quizType) ?? 0) + (data.attempts ?? 0))
-  })
-  return Object.fromEntries(distribution.entries())
-}
-
-export async function fetchPracticeTable({
-  gradeId,
-  unitId,
-  lessonId,
-}: {
-  gradeId?: string
-  unitId?: string
-  lessonId?: string
-} = {}) {
-  const constraints: QueryConstraint[] = []
-  if (gradeId) constraints.push(where('gradeId', '==', gradeId))
-  if (unitId) constraints.push(where('unitId', '==', unitId))
-  if (lessonId) constraints.push(where('lessonId', '==', lessonId))
-
-  const snapshot = await getDocs(constraints.length ? query(collection(db, 'practiceData'), ...constraints) : collection(db, 'practiceData'))
-  return snapshot.docs.map((docSnap) => fromDoc<PracticeAggregate>(docSnap))
-}
-
 export async function fetchLatestAdminProfile(): Promise<AdminProfile | null> {
   const snapshot = await getDocs(query(collection(db, 'admin'), orderBy('updatedAt', 'desc'), limit(1)))
   if (snapshot.empty) return null
@@ -440,7 +379,7 @@ export async function fetchLatestAdminProfile(): Promise<AdminProfile | null> {
 
 export async function saveAdminProfile(
   profile: Partial<Pick<AdminProfile, 'id' | 'status' | 'logoUrl' | 'logoStoragePath' | 'createdAt'>> &
-    Pick<AdminProfile, 'name' | 'email' | 'analyticsEnabled' | 'weaknessThreshold'>,
+    Pick<AdminProfile, 'name' | 'email' | 'weaknessThreshold'>,
 ) {
   const isNew = !profile.id
   const docRef = isNew ? doc(collection(db, 'admin')) : doc(db, 'admin', profile.id!)
@@ -461,6 +400,85 @@ export async function saveAdminProfile(
 export async function getAdminActionLogs(limitCount = 50) {
   const snapshot = await getDocs(query(collection(db, 'adminLogs'), orderBy('timestamp', 'desc'), limit(limitCount)))
   return snapshot.docs.map((docSnap) => fromDoc<AdminActionLog>(docSnap))
+}
+
+export async function fetchStudentPerformance(gradeId?: string): Promise<StudentPerformance[]> {
+  const [studentsSnap, practiceSnap, gradesSnap] = await Promise.all([
+    getDocs(collection(db, 'users')),
+    getDocs(collection(db, 'practiceData')),
+    getDocs(collection(db, 'grades')),
+  ])
+
+  const gradeMap = new Map(gradesSnap.docs.map((grade) => [grade.id, (grade.data() as Grade).name]))
+  const studentMap = new Map(studentsSnap.docs.map((student) => [student.id, fromDoc<Student>(student)]))
+
+  // Build performance map from practiceData
+  // Try multiple ways to link practiceData to users: userId, studentId, or document structure
+  const performanceMap = new Map<string, { attempts: number; correct: number; quizIds: Set<string>; lastActivity?: Timestamp | null }>()
+
+  practiceSnap.docs.forEach((docSnap) => {
+    const data = docSnap.data() as PracticeAggregate & { userId?: string; studentId?: string }
+    // Try to find userId/studentId in the data or extract from document ID
+    const userId = data.userId || data.studentId || (docSnap.id.includes('_') ? docSnap.id.split('_')[0] : null)
+
+    if (!userId) return
+
+    // If filtering by grade, check if practice data matches
+    if (gradeId && data.gradeId !== gradeId) return
+
+    const existing = performanceMap.get(userId) ?? { attempts: 0, correct: 0, quizIds: new Set<string>() }
+    const quizIds = existing.quizIds
+    if (data.quizId) {
+      quizIds.add(data.quizId)
+    }
+    
+    performanceMap.set(userId, {
+      attempts: existing.attempts + (data.attempts ?? 0),
+      correct: existing.correct + (data.correct ?? 0),
+      quizIds,
+      lastActivity:
+        data.updatedAt && existing.lastActivity
+          ? data.updatedAt.toMillis() > existing.lastActivity.toMillis()
+            ? data.updatedAt
+            : existing.lastActivity
+          : data.updatedAt || existing.lastActivity,
+    })
+  })
+
+  // Return all users, with performance data if available
+  return studentsSnap.docs
+    .map((docSnap) => {
+      const student = fromDoc<Student>(docSnap)
+      const userId = docSnap.id
+      const perf = performanceMap.get(userId) ?? { attempts: 0, correct: 0, quizIds: new Set<string>(), lastActivity: null }
+
+      // If filtering by grade, check student's gradeId
+      if (gradeId && student.gradeId !== gradeId) return null
+
+      const totalAttempts = perf.attempts
+      const totalCorrect = perf.correct
+      const averageAccuracy = totalAttempts > 0 ? Number(((totalCorrect / totalAttempts) * 100).toFixed(2)) : 0
+
+      return {
+        studentId: userId,
+        studentName: student.name,
+        gradeId: student.gradeId,
+        gradeName: student.gradeId ? gradeMap.get(student.gradeId) : undefined,
+        totalAttempts,
+        totalCorrect,
+        averageAccuracy,
+        quizzesCompleted: perf.quizIds.size,
+        lastActivityAt: perf.lastActivity,
+      } as StudentPerformance
+    })
+    .filter((item): item is StudentPerformance => item !== null)
+    .sort((a, b) => {
+      // Sort by accuracy (highest first), then by name if no data
+      if (a.totalAttempts === 0 && b.totalAttempts === 0) {
+        return a.studentName.localeCompare(b.studentName)
+      }
+      return b.averageAccuracy - a.averageAccuracy
+    })
 }
 
 

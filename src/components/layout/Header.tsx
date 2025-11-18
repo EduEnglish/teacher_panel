@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Bell, LogOut, Menu, Plus, ShieldCheck, Sparkles } from 'lucide-react'
+import { Bell, LogOut, Menu, Plus, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -41,12 +41,6 @@ export function Header({ onMenuClick }: HeaderProps) {
           <Link to="/curriculum/grades">
             <ShieldCheck className="h-4 w-4" />
             Manage Curriculum
-          </Link>
-        </Button>
-        <Button variant="outline" size="sm" className="hidden gap-2 rounded-full sm:flex" asChild>
-          <Link to="/analytics">
-            <Sparkles className="h-4 w-4" />
-            View Analytics
           </Link>
         </Button>
         <Button variant="default" size="sm" className="gap-2 rounded-full shadow" asChild>

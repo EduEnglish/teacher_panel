@@ -1,4 +1,4 @@
-import { BarChart3, BellRing, BookOpenCheck, LibraryBig, LineChart, Settings } from 'lucide-react'
+import { BarChart3, BellRing, BookOpenCheck, Settings, Users } from 'lucide-react'
 
 export const navigationLinks = [
   {
@@ -16,24 +16,17 @@ export const navigationLinks = [
       { label: 'Lessons', to: '/curriculum/lessons' },
       { label: 'Sections', to: '/curriculum/sections' },
       { label: 'Quizzes', to: '/curriculum/quizzes' },
-      { label: 'Special Lessons', to: '/curriculum/special-lessons' },
     ],
   },
   {
-    label: 'Analytics',
-    icon: LineChart,
-    to: '/analytics',
+    label: 'Students',
+    icon: Users,
+    to: '/students',
   },
   {
     label: 'Notifications',
     icon: BellRing,
     to: '/notifications',
-  },
-  {
-    label: 'Resources',
-    icon: LibraryBig,
-    to: '/resources',
-    disabled: true,
   },
   {
     label: 'Settings',
@@ -49,12 +42,6 @@ export const quizTypeOptions = [
   { value: 'spelling', label: 'Spelling' },
   { value: 'matching', label: 'Matching' },
   { value: 'order-words', label: 'Order Words' },
-] as const
-
-export const specialLessonTypeOptions = [
-  { value: 'Revision', label: 'Revision' },
-  { value: 'Assessment', label: 'Assessment' },
-  { value: 'Mixed Practice', label: 'Mixed Practice' },
 ] as const
 
 export const notificationAudienceOptions = [

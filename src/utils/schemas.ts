@@ -122,19 +122,7 @@ export const adminSettingsSchema = z.object({
   email: z.string().email(),
   logoUrl: z.string().url().optional(),
   logoStoragePath: z.string().optional(),
-  analyticsEnabled: z.boolean(),
   weaknessThreshold: z.number().min(0).max(100),
-  status: statusSchema.default('active'),
-})
-
-export const specialLessonSchema = z.object({
-  id: z.string().optional(),
-  gradeId: z.string().min(1, 'Grade is required'),
-  lessonType: z.enum(['Revision', 'Assessment', 'Mixed Practice']),
-  title: z.string().min(2, 'Title must be at least 2 characters'),
-  sourceUnitIds: z.array(z.string().min(1)).min(1, 'Select at least one unit'),
-  linkedQuizIds: z.array(z.string().min(1)).min(1, 'Select at least one quiz'),
-  description: z.string().max(400).optional().or(z.literal('')),
   status: statusSchema.default('active'),
 })
 
@@ -195,7 +183,6 @@ export type SpellingQuestionFormValues = z.infer<typeof spellingQuestionSchema>
 export type MatchingQuestionFormValues = z.infer<typeof matchingQuestionSchema>
 export type OrderWordsQuestionFormValues = z.infer<typeof orderWordsQuestionSchema>
 export type AdminSettingsFormValues = z.infer<typeof adminSettingsSchema>
-export type SpecialLessonFormValues = z.infer<typeof specialLessonSchema>
 export type NotificationFormValues = z.infer<typeof notificationSchema>
 
 

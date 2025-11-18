@@ -1,16 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { GraduationCap, Layers, ListChecks, NotebookPen, Target, Trophy } from 'lucide-react'
+import { GraduationCap, Layers, ListChecks, NotebookPen, Trophy } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/feedback/StatsCard'
-import { AccuracyBarChart } from '@/components/charts/AccuracyBarChart'
-import { QuizTypePieChart } from '@/components/charts/QuizTypePieChart'
-import { computeDashboardCounts, fetchAccuracyByUnit, fetchQuizTypeDistribution } from '@/services/firebase'
+import { computeDashboardCounts } from '@/services/firebase'
 import { useUI } from '@/context/UIContext'
 import { formatPercentage } from '@/utils/formatters'
-
-type AccuracyData = Awaited<ReturnType<typeof fetchAccuracyByUnit>>
 
 export function DashboardPage() {
   const { setPageTitle, notifyError } = useUI()
@@ -26,9 +22,6 @@ export function DashboardPage() {
     mostPracticedUnit: 'Awaiting data',
     mostChallengingLesson: 'Awaiting data',
   })
-  const [accuracyData, setAccuracyData] = useState<AccuracyData>([])
-  const [quizTypeDistribution, setQuizTypeDistribution] = useState<Array<{ type: string; count: number }>>([])
-
   useEffect(() => {
     setPageTitle('Teacher Dashboard')
   }, [setPageTitle])
@@ -37,11 +30,7 @@ export function DashboardPage() {
     async function loadDashboard() {
       try {
         setIsLoading(true)
-        const [countsResponse, accuracyResponse, quizTypeResponse] = await Promise.all([
-          computeDashboardCounts(),
-          fetchAccuracyByUnit(),
-          fetchQuizTypeDistribution(),
-        ])
+        const countsResponse = await computeDashboardCounts()
         setCounts({
           grades: countsResponse.grades,
           units: countsResponse.units,
@@ -53,13 +42,6 @@ export function DashboardPage() {
           mostPracticedUnit: countsResponse.mostPracticedUnit ?? 'Awaiting data',
           mostChallengingLesson: countsResponse.mostChallengingLesson ?? 'Awaiting data',
         })
-        setAccuracyData(accuracyResponse)
-        setQuizTypeDistribution(
-          Object.entries(quizTypeResponse).map(([type, count]) => ({
-            type,
-            count,
-          })),
-        )
       } catch (error) {
         notifyError('Unable to load dashboard data', error instanceof Error ? error.message : undefined)
       } finally {
@@ -75,12 +57,6 @@ export function DashboardPage() {
       description: 'Create and update the full English learning roadmap.',
       to: '/curriculum/grades',
       icon: <Layers className="h-5 w-5" />,
-    },
-    {
-      title: 'View Analytics',
-      description: 'Explore performance insights and learning trends.',
-      to: '/analytics',
-      icon: <Target className="h-5 w-5" />,
     },
   ]
 
@@ -111,34 +87,6 @@ export function DashboardPage() {
           description="Interactive assessments"
           icon={<ListChecks className="h-8 w-8" />}
         />
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2 border-none shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <div>
-              <CardTitle className="text-xl font-semibold">Accuracy by Unit</CardTitle>
-              <CardDescription>Monitor mastery levels across units.</CardDescription>
-            </div>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/analytics">View insights</Link>
-            </Button>
-          </CardHeader>
-          <CardContent>{accuracyData.length ? <AccuracyBarChart data={accuracyData} /> : <p className="py-10 text-center text-sm text-muted-foreground">No practice data captured yet.</p>}</CardContent>
-        </Card>
-        <Card className="border-none shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-xl font-semibold">Quiz Type Distribution</CardTitle>
-            <CardDescription>Track practice volume by assessment type.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {quizTypeDistribution.length ? (
-              <QuizTypePieChart data={quizTypeDistribution} />
-            ) : (
-              <p className="py-10 text-center text-sm text-muted-foreground">No quiz attempts available yet.</p>
-            )}
-          </CardContent>
-        </Card>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-3">

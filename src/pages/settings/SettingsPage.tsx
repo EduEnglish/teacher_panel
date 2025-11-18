@@ -25,7 +25,6 @@ export function SettingsPage() {
     defaultValues: {
       name: user?.displayName ?? 'EduEnglish Admin',
       email: user?.email ?? '',
-      analyticsEnabled: true,
       weaknessThreshold: 60,
       status: 'active',
     },
@@ -47,7 +46,6 @@ export function SettingsPage() {
             email: profile.email,
             logoUrl: profile.logoUrl,
             logoStoragePath: profile.logoStoragePath,
-            analyticsEnabled: profile.analyticsEnabled,
             weaknessThreshold: profile.weaknessThreshold,
             status: profile.status,
           })
@@ -55,7 +53,6 @@ export function SettingsPage() {
           form.reset({
             name: user.displayName ?? 'EduEnglish Admin',
             email: user.email ?? '',
-            analyticsEnabled: true,
             weaknessThreshold: 60,
             status: 'active',
           })
@@ -78,7 +75,6 @@ export function SettingsPage() {
         email: values.email,
         logoUrl: values.logoUrl,
         logoStoragePath: values.logoStoragePath,
-        analyticsEnabled: values.analyticsEnabled,
         weaknessThreshold: values.weaknessThreshold,
         status: values.status,
       })
@@ -184,7 +180,7 @@ export function SettingsPage() {
       <Card className="border-none shadow-sm">
         <CardHeader>
           <CardTitle className="text-xl font-semibold">Admin Profile</CardTitle>
-          <CardDescription>Update your contact details and control analytics preferences.</CardDescription>
+          <CardDescription>Update your contact details and preferences.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -215,23 +211,6 @@ export function SettingsPage() {
                   )}
                 />
               </div>
-
-              <FormField
-                name="analyticsEnabled"
-                render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
-                    <div className="space-y-0.5">
-                      <FormLabel>Enable Analytics Tracking</FormLabel>
-                      <p className="text-xs text-muted-foreground">
-                        Controls whether aggregated practice data is collected for insights.
-                      </p>
-                    </div>
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                  </FormItem>
-                )}
-              />
 
               <FormField
                 name="weaknessThreshold"
