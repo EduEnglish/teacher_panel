@@ -21,6 +21,19 @@ export function formatDate(value?: Timestamp | string | null, defaultText = '—
   }
 }
 
+export function formatDateTime(value?: Timestamp | string | null, defaultText = '—') {
+  if (!value) return defaultText
+  try {
+    if (typeof value === 'string') {
+      return format(parseISO(value), 'PPp')
+    }
+    return format(value.toDate(), 'PPp')
+  } catch (error) {
+    console.error('Failed to format date and time', error)
+    return defaultText
+  }
+}
+
 export function getInitials(name?: string) {
   if (!name) return 'EE'
   const segments = name.trim().split(' ').filter(Boolean)
