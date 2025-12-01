@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import { AuthProvider } from '@/context/AuthContext'
 import { UIProvider } from '@/context/UIContext'
+import { CurriculumCacheProvider } from '@/context/CurriculumCacheContext'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { LoginPage } from '@/pages/auth/LoginPage'
@@ -11,6 +12,7 @@ import { UnitsPage } from '@/pages/curriculum/UnitsPage'
 import { LessonsPage } from '@/pages/curriculum/LessonsPage'
 import { SectionsPage } from '@/pages/curriculum/SectionsPage'
 import { QuizzesPage } from '@/pages/curriculum/QuizzesPage'
+import { QuestionsPage } from '@/pages/curriculum/QuestionsPage'
 import { SettingsPage } from '@/pages/settings/SettingsPage'
 import { NotificationsPage } from '@/pages/notifications/NotificationsPage'
 import { StudentsPage } from '@/pages/students/StudentsPage'
@@ -19,7 +21,8 @@ function App() {
   return (
     <AuthProvider>
       <UIProvider>
-        <BrowserRouter>
+        <CurriculumCacheProvider>
+          <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route element={<ProtectedRoute />}>
@@ -33,6 +36,7 @@ function App() {
                   <Route path="lessons" element={<LessonsPage />} />
                   <Route path="sections" element={<SectionsPage />} />
                   <Route path="quizzes/*" element={<QuizzesPage />} />
+                  <Route path="questions" element={<QuestionsPage />} />
                 </Route>
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />
@@ -41,8 +45,9 @@ function App() {
               </Route>
             </Route>
           </Routes>
-        </BrowserRouter>
-        <Toaster richColors />
+          </BrowserRouter>
+          <Toaster richColors />
+        </CurriculumCacheProvider>
       </UIProvider>
     </AuthProvider>
   )

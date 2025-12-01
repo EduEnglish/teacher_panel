@@ -11,28 +11,27 @@ export const statusSchema = z.enum(['active', 'inactive'] as const)
 export const gradeSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2, 'Grade name must be at least 2 characters'),
-  description: z.string().max(200).optional().or(z.literal('')),
-  status: statusSchema.default('active'),
+  description: z.string().max(30, 'Description must be at most 30 characters').optional().or(z.literal('')),
 })
 
 export const unitSchema = z.object({
   id: z.string().optional(),
   gradeId: z.string().min(1, 'Grade is required'),
   number: z.number().min(1, 'Unit number must be greater than zero'),
-  title: z.string().min(2, 'Unit title must be at least 2 characters'),
-  description: z.string().max(300).optional().or(z.literal('')),
-  status: statusSchema.default('active'),
+  isPublished: z.boolean().default(false),
 })
+
+const lessonTitleOptions = ['Grammar', 'Matching', 'Fill in the blanks', 'Spelling', 'Listening', 'Reading'] as const
 
 export const lessonSchema = z.object({
   id: z.string().optional(),
   gradeId: z.string().min(1, 'Grade is required'),
   unitId: z.string().min(1, 'Unit is required'),
-  title: z.string().min(2, 'Lesson title must be at least 2 characters'),
-  type: z.enum(lessonTypes),
-  description: z.string().max(400).optional().or(z.literal('')),
+  title: z.enum(lessonTitleOptions, {
+    errorMap: () => ({ message: 'Please select a lesson title' }),
+  }),
   order: z.number().min(1, 'Order must be greater than zero'),
-  status: statusSchema.default('active'),
+  isPublished: z.boolean().default(false),
 })
 
 export const sectionSchema = z.object({
@@ -40,10 +39,8 @@ export const sectionSchema = z.object({
   gradeId: z.string().min(1, 'Grade is required'),
   unitId: z.string().min(1, 'Unit is required'),
   lessonId: z.string().min(1, 'Lesson is required'),
-  title: z.string().min(2, 'Section title must be at least 2 characters'),
-  description: z.string().max(400).optional().or(z.literal('')),
-  quizType: z.enum(quizTypes),
-  status: statusSchema.default('active'),
+  title: z.string().min(2, 'Section title must be at least 2 characters').max(25, 'Section title must be at most 25 characters'),
+  isPublished: z.boolean().default(false),
 })
 
 export const quizSchema = z.object({
@@ -53,10 +50,8 @@ export const quizSchema = z.object({
   lessonId: z.string().min(1, 'Lesson is required'),
   sectionId: z.string().min(1, 'Section is required'),
   title: z.string().min(2, 'Quiz title must be at least 2 characters'),
-  description: z.string().max(400).optional().or(z.literal('')),
   quizType: z.enum(quizTypes),
   isPublished: z.boolean().default(false),
-  status: statusSchema.default('active'),
 })
 
 export const fillInQuestionSchema = z.object({
@@ -72,8 +67,11 @@ export const fillInQuestionSchema = z.object({
       }),
     )
     .min(1, 'At least one blank is required'),
+  options: z.array(z.string().min(1, 'Option cannot be empty')).optional(),
   type: z.literal('fill-in'),
   order: z.number().min(1),
+  points: z.number().min(1, 'Points must be at least 1').default(1),
+  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -81,9 +79,11 @@ export const spellingQuestionSchema = z.object({
   id: z.string().optional(),
   quizId: z.string().min(1, 'Quiz is required'),
   prompt: z.string().min(3),
-  answer: z.string().min(1),
+  answers: z.array(z.string().min(1, 'Answer cannot be empty')).min(1, 'At least one answer is required'),
   type: z.literal('spelling'),
   order: z.number().min(1),
+  points: z.number().min(1, 'Points must be at least 1').default(1),
+  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -102,6 +102,8 @@ export const matchingQuestionSchema = z.object({
     .min(2, 'Add at least two pairs'),
   type: z.literal('matching'),
   order: z.number().min(1),
+  points: z.number().min(1, 'Points must be at least 1').default(1),
+  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -113,6 +115,8 @@ export const orderWordsQuestionSchema = z.object({
   correctOrder: z.array(z.string().min(1)).min(2, 'Provide the correct order'),
   type: z.literal('order-words'),
   order: z.number().min(1),
+  points: z.number().min(1, 'Points must be at least 1').default(1),
+  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -120,9 +124,6 @@ export const adminSettingsSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2),
   email: z.string().email(),
-  logoUrl: z.string().url().optional(),
-  logoStoragePath: z.string().optional(),
-  weaknessThreshold: z.number().min(0).max(100),
   status: statusSchema.default('active'),
 })
 

@@ -127,7 +127,7 @@ function fromDoc<T>(snapshot: DocumentSnapshot<DocumentData, DocumentData>): T {
   } as T
 }
 
-async function logAdminAction(params: Omit<AdminActionLog, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: 'active' | 'inactive' }) {
+export async function logAdminAction(params: Omit<AdminActionLog, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: 'active' | 'inactive' }) {
   const logRef = doc(collection(db, 'adminLogs'))
   await setDoc(logRef, {
     id: logRef.id,
@@ -302,14 +302,48 @@ export async function deleteFile(path: string) {
 }
 
 export async function computeDashboardCounts(): Promise<CurriculumCounts> {
-  const [gradesSnap, unitsSnap, lessonsSnap, sectionsSnap, quizzesSnap, practiceSnap] = await Promise.all([
-    getDocs(collection(db, 'grades')),
-    getDocs(collection(db, 'units')),
-    getDocs(collection(db, 'lessons')),
-    getDocs(collection(db, 'sections')),
-    getDocs(collection(db, 'quizzes')),
-    getDocs(collection(db, 'practiceData')),
-  ])
+  // Get grades first
+  const gradesSnap = await getDocs(collection(db, 'grades'))
+  
+  // Get all nested data by iterating through grades
+  let totalUnits = 0
+  let totalLessons = 0
+  let totalSections = 0
+  let totalQuizzes = 0
+  
+  for (const gradeDoc of gradesSnap.docs) {
+    const gradeId = gradeDoc.id
+    
+    // Get units for this grade
+    const unitsSnap = await getDocs(collection(db, 'grades', gradeId, 'units'))
+    totalUnits += unitsSnap.size
+    
+    for (const unitDoc of unitsSnap.docs) {
+      const unitId = unitDoc.id
+      
+      // Get lessons for this unit
+      const lessonsSnap = await getDocs(collection(db, 'grades', gradeId, 'units', unitId, 'lessons'))
+      totalLessons += lessonsSnap.size
+      
+      for (const lessonDoc of lessonsSnap.docs) {
+        const lessonId = lessonDoc.id
+        
+        // Get sections for this lesson
+        const sectionsSnap = await getDocs(collection(db, 'grades', gradeId, 'units', unitId, 'lessons', lessonId, 'sections'))
+        totalSections += sectionsSnap.size
+        
+        for (const sectionDoc of sectionsSnap.docs) {
+          const sectionId = sectionDoc.id
+          
+          // Get quizzes for this section
+          const quizzesSnap = await getDocs(collection(db, 'grades', gradeId, 'units', unitId, 'lessons', lessonId, 'sections', sectionId, 'quizzes'))
+          totalQuizzes += quizzesSnap.size
+        }
+      }
+    }
+  }
+  
+  const practiceSnap = await getDocs(collection(db, 'practiceData'))
 
   let totalAccuracy = 0
   let accuracyCount = 0
@@ -348,22 +382,44 @@ export async function computeDashboardCounts(): Promise<CurriculumCounts> {
 
   const averageAccuracy = accuracyCount ? Number((totalAccuracy / accuracyCount).toFixed(2)) : 0
 
-  const unitDoc = mostPracticedUnitId
-    ? unitsSnap.docs.find((unit) => unit.id === mostPracticedUnitId)
-    : undefined
-  const unitTitle = unitDoc ? (unitDoc.data() as Unit).title : undefined
-
-  const lessonDoc = mostChallengingLessonId
-    ? lessonsSnap.docs.find((lesson) => lesson.id === mostChallengingLessonId)
-    : undefined
-  const lessonTitle = lessonDoc ? (lessonDoc.data() as Lesson).title : undefined
+  // Find unit and lesson titles from nested structure
+  let unitTitle: string | undefined
+  let lessonTitle: string | undefined
+  
+  if (mostPracticedUnitId) {
+    // Search through nested structure for unit
+    for (const gradeDoc of gradesSnap.docs) {
+      const unitsSnap = await getDocs(collection(db, 'grades', gradeDoc.id, 'units'))
+      const unitDoc = unitsSnap.docs.find((u) => u.id === mostPracticedUnitId)
+      if (unitDoc) {
+        unitTitle = (unitDoc.data() as Unit).title
+        break
+      }
+    }
+  }
+  
+  if (mostChallengingLessonId) {
+    // Search through nested structure for lesson
+    for (const gradeDoc of gradesSnap.docs) {
+      const unitsSnap = await getDocs(collection(db, 'grades', gradeDoc.id, 'units'))
+      for (const unitDoc of unitsSnap.docs) {
+        const lessonsSnap = await getDocs(collection(db, 'grades', gradeDoc.id, 'units', unitDoc.id, 'lessons'))
+        const lessonDoc = lessonsSnap.docs.find((l) => l.id === mostChallengingLessonId)
+        if (lessonDoc) {
+          lessonTitle = (lessonDoc.data() as Lesson).title
+          break
+        }
+      }
+      if (lessonTitle) break
+    }
+  }
 
   return {
     grades: gradesSnap.size,
-    units: unitsSnap.size,
-    lessons: lessonsSnap.size,
-    sections: sectionsSnap.size,
-    quizzes: quizzesSnap.size,
+    units: totalUnits,
+    lessons: totalLessons,
+    sections: totalSections,
+    quizzes: totalQuizzes,
     practices: practiceSnap.size,
     averageAccuracy,
     mostPracticedUnit: unitTitle ?? undefined,
@@ -378,8 +434,8 @@ export async function fetchLatestAdminProfile(): Promise<AdminProfile | null> {
 }
 
 export async function saveAdminProfile(
-  profile: Partial<Pick<AdminProfile, 'id' | 'status' | 'logoUrl' | 'logoStoragePath' | 'createdAt'>> &
-    Pick<AdminProfile, 'name' | 'email' | 'weaknessThreshold'>,
+  profile: Partial<Pick<AdminProfile, 'id' | 'status' | 'createdAt'>> &
+    Pick<AdminProfile, 'name' | 'email'>,
 ) {
   const isNew = !profile.id
   const docRef = isNew ? doc(collection(db, 'admin')) : doc(db, 'admin', profile.id!)

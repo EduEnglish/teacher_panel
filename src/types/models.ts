@@ -14,37 +14,41 @@ export interface BaseEntity {
   updatedAt?: Timestamp | null
 }
 
-export interface Grade extends BaseEntity {
+export interface Grade extends Omit<BaseEntity, 'status'> {
   name: string
   description?: string
+  // Legacy field (for backward compatibility with existing Firebase data)
+  status?: string
 }
 
-export interface Unit extends BaseEntity {
+export interface Unit extends Omit<BaseEntity, 'status'> {
   gradeId: string
   number: number
-  title: string
+  isPublished: boolean
+  // Legacy fields (for backward compatibility with existing Firebase data)
+  title?: string
   description?: string
+  status?: string
 }
 
-export interface Lesson extends BaseEntity {
+export interface Lesson extends Omit<BaseEntity, 'status'> {
   gradeId: string
   unitId: string
   title: string
-  type: LessonType
-  description?: string
   order: number
+  isPublished: boolean
 }
 
-export interface Section extends BaseEntity {
+export interface Section extends Omit<BaseEntity, 'status'> {
   gradeId: string
   unitId: string
   lessonId: string
   title: string
-  quizType: QuizType
   description?: string
+  isPublished: boolean
 }
 
-export interface Quiz extends BaseEntity {
+export interface Quiz extends Omit<BaseEntity, 'status'> {
   gradeId: string
   unitId: string
   lessonId: string
@@ -66,17 +70,20 @@ export interface QuestionBase extends BaseEntity {
   explanation?: string
   order: number
   difficulty?: 'easy' | 'medium' | 'hard'
+  isPublished: boolean
+  points: number // Required points field (defaults to 1)
 }
 
 export interface FillInQuestion extends QuestionBase {
   type: 'fill-in'
   blanks: Array<{ id: string; answer: string }>
   sentence: string
+  options?: string[] // Optional multiple choice options
 }
 
 export interface SpellingQuestion extends QuestionBase {
   type: 'spelling'
-  answer: string
+  answers: string[] // Array of answers (can have multiple)
 }
 
 export interface MatchingQuestion extends QuestionBase {
@@ -108,9 +115,6 @@ export interface PracticeAggregate extends BaseEntity {
 export interface AdminProfile extends BaseEntity {
   name: string
   email: string
-  logoUrl?: string
-  logoStoragePath?: string
-  weaknessThreshold: number
 }
 
 export interface AdminActionLog extends BaseEntity {

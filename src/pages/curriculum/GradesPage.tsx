@@ -11,8 +11,8 @@ import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { gradeSchema, type GradeFormValues } from '@/utils/schemas'
-import { statusOptions } from '@/utils/constants'
-import { gradeService, unitService } from '@/services/firebase'
+import { gradeService } from '@/services/firebase'
+import { hierarchicalUnitService } from '@/services/hierarchicalServices'
 import type { Grade, Unit } from '@/types/models'
 import { useCollection } from '@/hooks/useCollection'
 
@@ -25,14 +25,29 @@ export function GradesPage() {
   const [editingGrade, setEditingGrade] = useState<Grade | null>(null)
 
   const { data: grades, isLoading: gradesLoading } = useCollection<Grade>(gradeService.listen)
-  const { data: units } = useCollection<Unit>(unitService.listen)
+  const [allUnits, setAllUnits] = useState<Unit[]>([])
+
+  // Load all units from all grades (for counting)
+  useEffect(() => {
+    if (grades.length === 0) {
+      setAllUnits([])
+      return
+    }
+
+    const loadAllUnits = async () => {
+      const unitsPromises = grades.map((grade) => hierarchicalUnitService.getAll(grade.id))
+      const unitsArrays = await Promise.all(unitsPromises)
+      setAllUnits(unitsArrays.flat())
+    }
+
+    loadAllUnits()
+  }, [grades])
 
   const form = useForm<GradeFormValues>({
     resolver: zodResolver(gradeSchema) as any,
     defaultValues: {
       name: '',
       description: '',
-      status: 'active',
     },
   })
 
@@ -41,7 +56,7 @@ export function GradesPage() {
   }, [setPageTitle])
 
   const rows = useMemo<GradeTableRow[]>(() => {
-    const unitsPerGrade = units.reduce<Record<string, number>>((acc, unit) => {
+    const unitsPerGrade = allUnits.reduce<Record<string, number>>((acc, unit) => {
       acc[unit.gradeId] = (acc[unit.gradeId] ?? 0) + 1
       return acc
     }, {})
@@ -52,7 +67,7 @@ export function GradesPage() {
         unitCount: unitsPerGrade[grade.id] ?? 0,
       }))
       .sort((a, b) => a.name.localeCompare(b.name))
-  }, [grades, units])
+  }, [grades, allUnits])
 
   useEffect(() => {
     if (editingGrade) {
@@ -60,13 +75,11 @@ export function GradesPage() {
         id: editingGrade.id,
         name: editingGrade.name,
         description: editingGrade.description ?? '',
-        status: editingGrade.status,
       })
     } else {
       form.reset({
         name: '',
         description: '',
-        status: 'active',
       })
     }
   }, [editingGrade, form])
@@ -106,13 +119,21 @@ export function GradesPage() {
       return
     }
     try {
+      // Check for duplicate grade name (case-insensitive)
+      const duplicateGrade = grades.find(
+        (g) => g.name.toLowerCase().trim() === values.name.toLowerCase().trim() && g.id !== editingGrade?.id,
+      )
+      if (duplicateGrade) {
+        notifyError('Duplicate grade', `A grade with the name "${values.name}" already exists.`)
+        return
+      }
+
       if (editingGrade) {
         await gradeService.update(
           editingGrade.id,
           {
             name: values.name,
             description: values.description?.trim() || '',
-            status: values.status,
           },
           user.uid,
           { name: values.name },
@@ -123,7 +144,6 @@ export function GradesPage() {
           {
             name: values.name,
             description: values.description?.trim() || '',
-            status: values.status,
           } as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>,
           user.uid,
           { name: values.name },
@@ -137,19 +157,29 @@ export function GradesPage() {
   })
 
   const columns: Array<DataTableColumn<GradeTableRow>> = [
-    { key: 'name', header: 'Grade Name' },
+    { 
+      key: 'name', 
+      header: 'Grade Name',
+      render: (row) => (
+        <div className="truncate max-w-[200px]" title={row.name}>
+          {row.name}
+        </div>
+      ),
+    },
+    {
+      key: 'description',
+      header: 'Description',
+      render: (row) => (
+        <div className="truncate max-w-[250px]" title={row.description || ''}>
+          <span className="text-muted-foreground">{row.description || <span className="italic text-muted-foreground/60">No description</span>}</span>
+        </div>
+      ),
+    },
     {
       key: 'unitCount',
       header: 'Units',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.unitCount}</span>,
-    },
-    {
-      key: 'status',
-      header: 'Status',
-      render: (row) => (
-        <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{row.status === 'active' ? 'Active' : 'Inactive'}</Badge>
-      ),
     },
   ]
 
@@ -201,33 +231,10 @@ export function GradesPage() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Short Description</FormLabel>
+                  <FormLabel>Short Description (max 30 characters)</FormLabel>
                   <FormControl>
-                    <Input placeholder="Optional context for this grade" {...field} />
+                    <Input placeholder="Optional context for this grade" maxLength={30} {...field} />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

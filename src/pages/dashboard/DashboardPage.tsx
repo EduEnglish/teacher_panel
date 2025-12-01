@@ -1,55 +1,96 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GraduationCap, Layers, ListChecks, NotebookPen, Trophy } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { StatsCard } from '@/components/feedback/StatsCard'
-import { computeDashboardCounts } from '@/services/firebase'
+import { useCollection } from '@/hooks/useCollection'
+import { gradeService, practiceService } from '@/services/firebase'
+import { useCurriculumCache } from '@/context/CurriculumCacheContext'
 import { useUI } from '@/context/UIContext'
 import { formatPercentage } from '@/utils/formatters'
 
 export function DashboardPage() {
-  const { setPageTitle, notifyError } = useUI()
-  const [isLoading, setIsLoading] = useState(true)
-  const [counts, setCounts] = useState({
-    grades: 0,
-    units: 0,
-    lessons: 0,
-    sections: 0,
-    quizzes: 0,
-    practices: 0,
-    averageAccuracy: 0,
-    mostPracticedUnit: 'Awaiting data',
-    mostChallengingLesson: 'Awaiting data',
-  })
+  const { setPageTitle } = useUI()
+  const { grades, allUnits, allLessons, allSections, allQuizzes, isLoading: cacheLoading } = useCurriculumCache()
+  const { data: practices, isLoading: practicesLoading } = useCollection(practiceService.listen)
+
   useEffect(() => {
     setPageTitle('Teacher Dashboard')
   }, [setPageTitle])
 
-  useEffect(() => {
-    async function loadDashboard() {
-      try {
-        setIsLoading(true)
-        const countsResponse = await computeDashboardCounts()
-        setCounts({
-          grades: countsResponse.grades,
-          units: countsResponse.units,
-          lessons: countsResponse.lessons,
-          sections: countsResponse.sections,
-          quizzes: countsResponse.quizzes,
-          practices: countsResponse.practices,
-          averageAccuracy: countsResponse.averageAccuracy,
-          mostPracticedUnit: countsResponse.mostPracticedUnit ?? 'Awaiting data',
-          mostChallengingLesson: countsResponse.mostChallengingLesson ?? 'Awaiting data',
-        })
-      } catch (error) {
-        notifyError('Unable to load dashboard data', error instanceof Error ? error.message : undefined)
-      } finally {
-        setIsLoading(false)
+  // Compute counts from cached data
+  const counts = useMemo(() => {
+    // Calculate average accuracy from practices
+    let totalAccuracy = 0
+    let accuracyCount = 0
+    
+    practices.forEach((practice) => {
+      if (typeof practice.accuracy === 'number') {
+        totalAccuracy += practice.accuracy
+        accuracyCount += 1
+      } else if (typeof practice.correct === 'number' && typeof practice.attempts === 'number' && practice.attempts > 0) {
+        totalAccuracy += (practice.correct / practice.attempts) * 100
+        accuracyCount += 1
       }
+    })
+    
+    const averageAccuracy = accuracyCount ? Number((totalAccuracy / accuracyCount).toFixed(2)) : 0
+
+    // Find most practiced unit (unit with most practice attempts)
+    let mostPracticedUnitId: string | undefined
+    let mostPracticedAttempts = -1
+    
+    practices.forEach((practice) => {
+      if (practice.unitId) {
+        const attempts = practice.attempts ?? 0
+        if (attempts > mostPracticedAttempts) {
+          mostPracticedAttempts = attempts
+          mostPracticedUnitId = practice.unitId
+        }
+      }
+    })
+    
+    let mostPracticedUnit = 'Awaiting data'
+    if (mostPracticedUnitId) {
+      const unit = allUnits.find((u) => u.id === mostPracticedUnitId)
+      mostPracticedUnit = unit ? `Unit ${unit.number}` : 'Awaiting data'
     }
-    loadDashboard()
-  }, [notifyError])
+
+    // Find most challenging lesson (lesson with lowest accuracy)
+    let mostChallengingLessonId: string | undefined
+    let lowestAccuracy = Number.POSITIVE_INFINITY
+    
+    practices.forEach((practice) => {
+      if (practice.lessonId) {
+        const accuracy = practice.accuracy ?? (practice.attempts ? (practice.correct ?? 0) / practice.attempts * 100 : 0)
+        if (accuracy < lowestAccuracy) {
+          lowestAccuracy = accuracy
+          mostChallengingLessonId = practice.lessonId
+        }
+      }
+    })
+    
+    let mostChallengingLesson = 'Awaiting data'
+    if (mostChallengingLessonId) {
+      const lesson = allLessons.find((l) => l.id === mostChallengingLessonId)
+      mostChallengingLesson = lesson?.title ?? 'Awaiting data'
+    }
+
+    return {
+      grades: grades.length,
+      units: allUnits.length,
+      lessons: allLessons.length,
+      sections: allSections.length,
+      quizzes: allQuizzes.length,
+      practices: practices.length,
+      averageAccuracy,
+      mostPracticedUnit,
+      mostChallengingLesson,
+    }
+  }, [grades, allUnits, allLessons, allSections, allQuizzes, practices])
+
+  const isLoading = cacheLoading || practicesLoading
 
   const quickLinks = [
     {

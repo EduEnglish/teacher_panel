@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import {
@@ -97,6 +98,16 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     name: 'blanks' as never,
   })
 
+  const optionsFieldArray = useFieldArray({
+    control: form.control,
+    name: 'options' as never,
+  })
+
+  const answersFieldArray = useFieldArray({
+    control: form.control,
+    name: 'answers' as never,
+  })
+
   const pairsFieldArray = useFieldArray({
     control: form.control,
     name: 'pairs' as never,
@@ -109,7 +120,13 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   }, [editingQuestion, quiz.id, quiz.quizType, form])
 
   const handleSubmit = form.handleSubmit(async (values) => {
-    const payload = values as QuestionInput
+    // Ensure question type matches quiz type
+    const expectedType = getQuestionTypeFromQuizType(quiz.quizType)
+    const payload = {
+      ...values,
+      type: expectedType, // Force type to match quiz type
+    } as QuestionInput
+    
     if (editingQuestion) {
       await onUpdate(editingQuestion.id, payload)
     } else {
@@ -118,6 +135,22 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     setEditingQuestion(null)
     form.reset(getDefaultValues(quiz.id, quiz.quizType))
   })
+
+// Helper function to map quiz type to question type
+function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type'] {
+  switch (quizType) {
+    case 'fill-in':
+      return 'fill-in'
+    case 'spelling':
+      return 'spelling'
+    case 'matching':
+      return 'matching'
+    case 'order-words':
+      return 'order-words'
+    default:
+      return 'fill-in'
+  }
+}
 
   const handleCancelEdit = () => {
     setEditingQuestion(null)
@@ -231,22 +264,105 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
                     ))}
                   </div>
                 </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Multiple Choice Options (Optional)</FormLabel>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => optionsFieldArray.append('')}
+                    >
+                      Add Option
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Add multiple choice options. If provided, students will see these options to choose from.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {optionsFieldArray.fields.map((fieldItem, index) => (
+                      <FormField
+                        key={fieldItem.id}
+                        name={`options.${index}` as const}
+                        render={({ field }) => (
+                          <FormItem className="space-y-2">
+                            <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
+                              Option {index + 1}
+                            </FormLabel>
+                            <div className="flex items-center gap-2">
+                              <FormControl>
+                                <Input {...field} placeholder="Option text" />
+                              </FormControl>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => optionsFieldArray.remove(index)}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                  {optionsFieldArray.fields.length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">
+                      No options added. Students will type their answers freely.
+                    </p>
+                  )}
+                </div>
               </>
             )}
 
             {isSpelling && (
-              <FormField
-                name="answer"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Correct Spelling</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Correct word" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <FormLabel>Correct Answers</FormLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => answersFieldArray.append('')}
+                  >
+                    Add Answer
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add one or more correct answers. Students can provide any of these answers.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {answersFieldArray.fields.map((fieldItem, index) => (
+                    <FormField
+                      key={fieldItem.id}
+                      name={`answers.${index}` as const}
+                      render={({ field }) => (
+                        <FormItem className="space-y-2">
+                          <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
+                            Answer {index + 1}
+                          </FormLabel>
+                          <div className="flex items-center gap-2">
+                            <FormControl>
+                              <Input {...field} placeholder="Correct spelling" />
+                            </FormControl>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => answersFieldArray.remove(index)}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ))}
+                </div>
+              </div>
             )}
 
             {isMatching && (
@@ -341,10 +457,27 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
             )}
 
             <FormField
-              name="order"
+              name="points"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Question Order</FormLabel>
+                  <FormLabel>Points</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={field.value ?? 1}
+                      onChange={(event) => field.onChange(Number(event.target.value))}
+                      placeholder="1"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              name="order"
+              render={({ field }) => (
+                <FormItem className="hidden">
                   <FormControl>
                     <Input
                       type="number"
@@ -353,7 +486,21 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
                       onChange={(event) => field.onChange(Number(event.target.value))}
                     />
                   </FormControl>
-                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              name="isPublished"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Publish to Mobile App</FormLabel>
+                    <p className="text-xs text-muted-foreground">Only published questions appear to students.</p>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
                 </FormItem>
               )}
             />
@@ -421,17 +568,22 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         prompt: '',
         sentence: '',
         blanks: [{ id: nanoid(), answer: '' }],
+        options: [],
         type: 'fill-in',
         order: 1,
+        points: 1,
+        isPublished: false,
         status: 'active',
       }
     case 'spelling':
       return {
         quizId,
         prompt: '',
-        answer: '',
+        answers: [''],
         type: 'spelling',
         order: 1,
+        points: 1,
+        isPublished: false,
         status: 'active',
       }
     case 'matching':
@@ -444,6 +596,8 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         ],
         type: 'matching',
         order: 1,
+        points: 1,
+        isPublished: false,
         status: 'active',
       }
     case 'order-words':
@@ -455,6 +609,8 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         correctOrder: [],
         type: 'order-words',
         order: 1,
+        points: 1,
+        isPublished: false,
         status: 'active',
       }
   }
@@ -465,13 +621,25 @@ function mapQuestionToValues(question: Question): QuestionInput {
     return {
       ...question,
       blanks: question.blanks.length ? question.blanks : [{ id: nanoid(), answer: '' }],
+      options: question.options || [],
+      points: question.points ?? 1,
+      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
 
   if (question.type === 'spelling') {
+    // Convert single answer to array if needed (backward compatibility)
+    const answers = Array.isArray(question.answers)
+      ? question.answers
+      : (question as any).answer
+        ? [(question as any).answer]
+        : ['']
     return {
       ...question,
+      answers,
+      points: question.points ?? 1,
+      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -485,6 +653,8 @@ function mapQuestionToValues(question: Question): QuestionInput {
             { id: nanoid(), left: '', right: '' },
             { id: nanoid(), left: '', right: '' },
           ],
+      points: question.points ?? 1,
+      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -494,6 +664,8 @@ function mapQuestionToValues(question: Question): QuestionInput {
       ...question,
       words: question.words ?? question.correctOrder,
       correctOrder: question.correctOrder ?? question.words,
+      points: question.points ?? 1,
+      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -519,16 +691,39 @@ export function renderQuestionPreview(question: Question) {
         </div>
       )
     case 'spelling':
+      // Handle both array format and single answer (backward compatibility)
+      const spellingAnswers = Array.isArray(question.answers)
+        ? question.answers
+        : (question as any).answer
+          ? [(question as any).answer]
+          : []
       return (
-        <p>
-          <span className="font-medium text-foreground">Correct Answer:</span> {question.answer}
-        </p>
+        <div className="space-y-2">
+          <p className="font-medium text-foreground">Correct Answers:</p>
+          <div className="flex flex-wrap gap-2">
+            {spellingAnswers.map((answer, index) => (
+              <Badge key={index} variant="secondary">
+                {answer}
+              </Badge>
+            ))}
+          </div>
+        </div>
       )
     case 'matching':
+      // Handle both array format (teacher panel) and object format (student app/Firestore)
+      const pairsArray = Array.isArray(question.pairs)
+        ? question.pairs
+        : question.pairs && typeof question.pairs === 'object'
+          ? Object.entries(question.pairs).map(([left, right]) => ({
+              id: left,
+              left,
+              right: right as string,
+            }))
+          : []
       return (
         <div className="grid gap-2">
-          {question.pairs.map((pair) => (
-            <div key={pair.id} className="grid grid-cols-2 gap-3 rounded-lg border border-border p-2">
+          {pairsArray.map((pair) => (
+            <div key={pair.id || pair.left} className="grid grid-cols-2 gap-3 rounded-lg border border-border p-2">
               <span>{pair.left}</span>
               <span className="font-semibold text-foreground">{pair.right}</span>
             </div>

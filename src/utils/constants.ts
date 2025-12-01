@@ -16,6 +16,7 @@ export const navigationLinks = [
       { label: 'Lessons', to: '/curriculum/lessons' },
       { label: 'Sections', to: '/curriculum/sections' },
       { label: 'Quizzes', to: '/curriculum/quizzes' },
+      { label: 'Questions', to: '/curriculum/questions' },
     ],
   },
   {
@@ -36,6 +37,15 @@ export const navigationLinks = [
 ]
 
 export const lessonTypeOptions = ['Grammar', 'Vocabulary', 'Reading', 'Listening'] as const
+
+export const lessonTitleOptions = [
+  'Grammar',
+  'Matching',
+  'Fill in the blanks',
+  'Spelling',
+  'Listening',
+  'Reading',
+] as const
 
 export const quizTypeOptions = [
   { value: 'fill-in', label: 'Fill in the Blanks' },
@@ -70,6 +80,5 @@ export const statusOptions = [
   { value: 'inactive', label: 'Inactive' },
 ] as const
 
-export const defaultWeaknessThreshold = 60
 
 

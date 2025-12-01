@@ -5,19 +5,20 @@ import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { unitSchema, type UnitFormValues } from '@/utils/schemas'
-import { statusOptions } from '@/utils/constants'
-import { gradeService, unitService } from '@/services/firebase'
+import { gradeService } from '@/services/firebase'
+import { hierarchicalUnitService } from '@/services/hierarchicalServices'
+import { useCurriculumCache } from '@/context/CurriculumCacheContext'
 import type { Grade, Unit } from '@/types/models'
-import { useCollection } from '@/hooks/useCollection'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
-type UnitTableRow = Unit & { gradeName: string }
+type UnitTableRow = Unit & { gradeName: string; lessonCount: number }
 
 export function UnitsPage() {
   const { user } = useAuth()
@@ -26,18 +27,49 @@ export function UnitsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null)
 
-  const { data: grades } = useCollection<Grade>(gradeService.listen)
-  const gradeFilter = useMemo(() => (selectedGradeId === 'all' ? undefined : [where('gradeId', '==', selectedGradeId)]), [selectedGradeId])
-  const { data: units, isLoading } = useCollection<Unit>(unitService.listen, gradeFilter)
+  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, isLoading: cacheLoading, refreshUnits } = useCurriculumCache()
+  
+  // Auto-select first grade if only one exists
+  useEffect(() => {
+    if (grades.length === 1 && selectedGradeId === 'all') {
+      setSelectedGradeId(grades[0].id)
+    }
+  }, [grades, selectedGradeId])
+  
+  const [units, setUnits] = useState<Unit[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Listen to units for selected grade (hierarchical structure)
+  useEffect(() => {
+    if (selectedGradeId === 'all' || !selectedGradeId) {
+      // If 'all', use cached data from context
+      setUnits(cachedAllUnits)
+      setIsLoading(cacheLoading)
+      return
+    }
+
+    setIsLoading(true)
+    const unsubscribe = hierarchicalUnitService.listen(
+      selectedGradeId,
+      (data) => {
+        setUnits(data)
+        setIsLoading(false)
+      },
+      undefined,
+    )
+
+    return unsubscribe
+  }, [selectedGradeId, cachedAllUnits, cacheLoading])
+
+  // Use cached lessons from context
+  const allLessons = cachedAllLessons
 
   const form = useForm<UnitFormValues>({
     resolver: zodResolver(unitSchema) as any,
     defaultValues: {
       gradeId: '',
       number: 1,
-      title: '',
-      description: '',
-      status: 'active',
+      isPublished: false,
     },
   })
 
@@ -51,30 +83,38 @@ export function UnitsPage() {
         id: editingUnit.id,
         gradeId: editingUnit.gradeId,
         number: editingUnit.number,
-        title: editingUnit.title,
-        description: editingUnit.description ?? '',
-        status: editingUnit.status,
+        isPublished: editingUnit.isPublished ?? false,
       })
     } else {
       form.reset({
         gradeId: selectedGradeId === 'all' ? '' : selectedGradeId,
         number: 1,
-        title: '',
-        description: '',
-        status: 'active',
+        isPublished: false,
       })
     }
   }, [editingUnit, selectedGradeId, form])
 
   const rows = useMemo<UnitTableRow[]>(() => {
     const gradeMap = new Map(grades.map((grade) => [grade.id, grade.name]))
+    const lessonsPerUnit = allLessons.reduce<Record<string, number>>((acc, lesson) => {
+      const key = `${lesson.gradeId}_${lesson.unitId}`
+      acc[key] = (acc[key] ?? 0) + 1
+      return acc
+    }, {})
     return units
       .map((unit) => ({
         ...unit,
         gradeName: gradeMap.get(unit.gradeId) ?? '—',
+        lessonCount: lessonsPerUnit[`${unit.gradeId}_${unit.id}`] ?? 0,
       }))
-      .sort((a, b) => a.number - b.number)
-  }, [units, grades])
+      .sort((a, b) => {
+        // First sort by grade name (alphabetically)
+        const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
+        if (gradeCompare !== 0) return gradeCompare
+        // Then sort by unit number within the same grade
+        return a.number - b.number
+      })
+  }, [units, grades, allLessons])
 
   const handleOpenNew = () => {
     setEditingUnit(null)
@@ -86,10 +126,40 @@ export function UnitsPage() {
     setIsModalOpen(true)
   }
 
+  const handleTogglePublish = async (unit: Unit) => {
+    if (!user?.uid) {
+      notifyError('Missing admin session', 'Please sign in again.')
+      return
+    }
+    if (!unit.gradeId) {
+      notifyError('Invalid unit', 'Unit missing gradeId')
+      return
+    }
+    
+    // Optimistic update
+    const newPublishedState = !unit.isPublished
+    setUnits((prevUnits) =>
+      prevUnits.map((u) => (u.id === unit.id ? { ...u, isPublished: newPublishedState } : u)),
+    )
+    
+    try {
+      await hierarchicalUnitService.update(unit.gradeId, unit.id, {
+        isPublished: newPublishedState,
+      })
+      notifySuccess(newPublishedState ? 'Unit published' : 'Unit unpublished')
+    } catch (error) {
+      // Revert on error
+      setUnits((prevUnits) =>
+        prevUnits.map((u) => (u.id === unit.id ? { ...u, isPublished: unit.isPublished } : u)),
+      )
+      notifyError('Unable to update unit', error instanceof Error ? error.message : undefined)
+    }
+  }
+
   const handleDelete = async (unit: Unit) => {
     const confirmed = await confirmAction({
       title: 'Delete unit?',
-      description: `Are you sure you want to delete "${unit.title}"?`,
+      description: `Are you sure you want to delete Unit ${unit.number}?`,
       confirmLabel: 'Delete',
     })
     if (!confirmed) return
@@ -98,8 +168,15 @@ export function UnitsPage() {
       return
     }
     try {
-      await unitService.remove(unit.id, user.uid, { title: unit.title, gradeId: unit.gradeId })
+      if (!unit.gradeId) {
+        notifyError('Invalid unit', 'Unit missing gradeId')
+        return
+      }
+      await hierarchicalUnitService.remove(unit.gradeId, unit.id)
+      // Log action manually since hierarchical service doesn't do it
+      await gradeService.update(unit.gradeId, {}, user.uid, { action: 'delete_unit', unitId: unit.id })
       notifySuccess('Unit deleted successfully')
+      refreshUnits() // Refresh cache
     } catch (error) {
       notifyError('Unable to delete unit', error instanceof Error ? error.message : undefined)
     }
@@ -111,33 +188,46 @@ export function UnitsPage() {
       return
     }
     try {
+      if (!values.gradeId) {
+        notifyError('Grade required', 'Please select a grade')
+        return
+      }
+
+      // Check for duplicate unit number in the same grade
+      const duplicateUnit = units.find(
+        (u) => u.number === values.number && u.gradeId === values.gradeId && u.id !== editingUnit?.id,
+      )
+      if (duplicateUnit) {
+        notifyError('Duplicate unit', `Unit ${values.number} already exists for this grade.`)
+        return
+      }
+
       if (editingUnit) {
-        await unitService.update(
+        if (!editingUnit.gradeId) {
+          notifyError('Invalid unit', 'Unit missing gradeId')
+          return
+        }
+        await hierarchicalUnitService.update(
+          editingUnit.gradeId,
           editingUnit.id,
           {
-            gradeId: values.gradeId,
             number: values.number,
-            title: values.title,
-            description: values.description?.trim() || '',
-            status: values.status,
+            isPublished: values.isPublished,
           },
-          user.uid,
-          { title: values.title },
         )
+        // Log action
+        await gradeService.update(editingUnit.gradeId, {}, user.uid, { action: 'update_unit', unitId: editingUnit.id })
         notifySuccess('Unit updated successfully')
+        refreshUnits() // Refresh cache
       } else {
-        await unitService.create(
-          {
-            gradeId: values.gradeId,
-            number: values.number,
-            title: values.title,
-            description: values.description?.trim() || '',
-            status: values.status,
-          } as Omit<Unit, 'id' | 'createdAt' | 'updatedAt'>,
-          user.uid,
-          { title: values.title },
-        )
+        await hierarchicalUnitService.create(values.gradeId, {
+          number: values.number,
+          isPublished: values.isPublished,
+        })
+        // Log action
+        await gradeService.update(values.gradeId, {}, user.uid, { action: 'create_unit' })
         notifySuccess('Unit created successfully')
+        refreshUnits() // Refresh cache
       }
       setIsModalOpen(false)
     } catch (error) {
@@ -148,17 +238,40 @@ export function UnitsPage() {
   const columns: Array<DataTableColumn<UnitTableRow>> = [
     {
       key: 'number',
-      header: '#',
+      header: 'Units',
       width: '60px',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.number}</span>,
     },
-    { key: 'title', header: 'Unit Title' },
-    { key: 'gradeName', header: 'Grade' },
+    { 
+      key: 'gradeName', 
+      header: 'Grade',
+      render: (row) => (
+        <div className="truncate max-w-[150px]" title={row.gradeName}>
+          {row.gradeName}
+        </div>
+      ),
+    },
     {
-      key: 'status',
-      header: 'Status',
-      render: (row) => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{row.status}</Badge>,
+      key: 'lessonCount',
+      header: 'Lessons',
+      align: 'center',
+      render: (row) => <span className="font-semibold text-foreground">{row.lessonCount}</span>,
+    },
+    {
+      key: 'isPublished',
+      header: 'Published',
+      align: 'center',
+      render: (row) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch 
+            checked={row.isPublished ?? false} 
+            onCheckedChange={(checked) => {
+              handleTogglePublish(row)
+            }}
+          />
+        </div>
+      ),
     },
   ]
 
@@ -202,7 +315,7 @@ export function UnitsPage() {
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingUnit ? 'Edit Unit' : 'Add Unit'}
-        description="Units group lessons and assessments by theme."
+        description="Units organize lessons within a grade."
         onSubmit={onSubmit}
         submitLabel={editingUnit ? 'Update Unit' : 'Create Unit'}
         isSubmitting={form.formState.isSubmitting}
@@ -221,80 +334,51 @@ export function UnitsPage() {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {grades.map((grade) => (
-                        <SelectItem key={grade.id} value={grade.id}>
-                          {grade.name}
-                        </SelectItem>
-                      ))}
+                      {grades.length === 0 ? (
+                        <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                          No grades available. Please create a grade first.
+                        </div>
+                      ) : (
+                        grades.map((grade) => (
+                          <SelectItem key={grade.id} value={grade.id}>
+                            {grade.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField
-                name="number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Unit Number</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={field.value ?? 1}
-                        onChange={(event) => field.onChange(Number(event.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {statusOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
             <FormField
-              name="title"
+              name="number"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Unit Title</FormLabel>
+                  <FormLabel>Unit Number</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Unit 3: Storytelling" {...field} />
+                    <Input
+                      type="number"
+                      min={1}
+                      value={field.value ?? 1}
+                      onChange={(event) => field.onChange(Number(event.target.value))}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <FormField
-              name="description"
+              name="isPublished"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Publish to Mobile App</FormLabel>
+                    <p className="text-xs text-muted-foreground">Only published units appear to students.</p>
+                  </div>
                   <FormControl>
-                    <Input placeholder="Optional summary" {...field} />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
-                  <FormMessage />
                 </FormItem>
               )}
             />

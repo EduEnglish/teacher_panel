@@ -10,14 +10,33 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
-import { QuestionBuilder, renderQuestionPreview } from '@/components/forms/QuestionBuilder'
+import { renderQuestionPreview } from '@/components/forms/QuestionBuilder'
 import { quizSchema, type QuizFormValues } from '@/utils/schemas'
-import { gradeService, lessonService, questionService, quizService, sectionService, unitService } from '@/services/firebase'
+import { quizTypeOptions } from '@/utils/constants'
+import { gradeService } from '@/services/firebase'
+import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
+import { createQuizWithQuestions, updateQuizWithQuestions, deleteQuizWithQuestions, getQuizWithQuestions, getQuizzesForSection } from '@/services/quizBuilderService'
+import { useCurriculumCache } from '@/context/CurriculumCacheContext'
 import type { Grade, Lesson, Question, Quiz, Section, Unit } from '@/types/models'
-import { useCollection } from '@/hooks/useCollection'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+
+// Helper function to map quiz type to question type
+function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type'] {
+  switch (quizType) {
+    case 'fill-in':
+      return 'fill-in'
+    case 'spelling':
+      return 'spelling'
+    case 'matching':
+      return 'matching'
+    case 'order-words':
+      return 'order-words'
+    default:
+      return 'fill-in'
+  }
+}
 
 type QuizTableRow = Quiz & {
   gradeName: string
@@ -37,72 +56,182 @@ export function QuizzesPage() {
   const [selectedSectionId, setSelectedSectionId] = useState<string | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null)
-  const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({})
-  const [questions, setQuestions] = useState<Question[]>([])
-  const [areQuestionsLoading, setAreQuestionsLoading] = useState(false)
-  const [isSavingQuestion, setIsSavingQuestion] = useState(false)
 
-  const { data: grades } = useCollection<Grade>(gradeService.listen)
-  const unitsConstraints = useMemo(() => (selectedGradeId === 'all' ? undefined : [where('gradeId', '==', selectedGradeId)]), [selectedGradeId])
-  const { data: units } = useCollection<Unit>(unitService.listen, unitsConstraints)
-  const lessonsConstraints = useMemo(() => {
-    const constraints = []
-    if (selectedGradeId !== 'all') constraints.push(where('gradeId', '==', selectedGradeId))
-    if (selectedUnitId !== 'all') constraints.push(where('unitId', '==', selectedUnitId))
-    return constraints.length ? constraints : undefined
-  }, [selectedGradeId, selectedUnitId])
-  const { data: lessons } = useCollection<Lesson>(lessonService.listen, lessonsConstraints)
-  const sectionsConstraints = useMemo(() => {
-    const constraints = []
-    if (selectedGradeId !== 'all') constraints.push(where('gradeId', '==', selectedGradeId))
-    if (selectedUnitId !== 'all') constraints.push(where('unitId', '==', selectedUnitId))
-    if (selectedLessonId !== 'all') constraints.push(where('lessonId', '==', selectedLessonId))
-    return constraints.length ? constraints : undefined
-  }, [selectedGradeId, selectedUnitId, selectedLessonId])
-  const { data: sections } = useCollection<Section>(sectionService.listen, sectionsConstraints)
+  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshQuizzes } = useCurriculumCache()
+  
+  // Auto-select first grade if only one exists
+  useEffect(() => {
+    if (grades.length === 1 && selectedGradeId === 'all') {
+      setSelectedGradeId(grades[0].id)
+    }
+  }, [grades, selectedGradeId])
+  
+  const [units, setUnits] = useState<Unit[]>([])
+  const [lessons, setLessons] = useState<Lesson[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [quizzes, setQuizzes] = useState<Quiz[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const quizzesConstraints = useMemo(() => {
-    const constraints = []
-    if (selectedGradeId !== 'all') constraints.push(where('gradeId', '==', selectedGradeId))
-    if (selectedUnitId !== 'all') constraints.push(where('unitId', '==', selectedUnitId))
-    if (selectedLessonId !== 'all') constraints.push(where('lessonId', '==', selectedLessonId))
-    if (selectedSectionId !== 'all') constraints.push(where('sectionId', '==', selectedSectionId))
-    return constraints.length ? constraints : undefined
-  }, [selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId])
-  const { data: quizzes, isLoading } = useCollection<Quiz>(quizService.listen, quizzesConstraints)
+  // Load units for selected grade (for table filtering)
+  useEffect(() => {
+    if (selectedGradeId === 'all' || !selectedGradeId) {
+      // If 'all', use cached units
+      setUnits(cachedAllUnits)
+      return
+    }
+
+    const unsubscribe = hierarchicalUnitService.listen(selectedGradeId, (data) => {
+      setUnits(data)
+    })
+
+    return unsubscribe
+  }, [selectedGradeId, cachedAllUnits])
+
+  // Auto-select first unit if only one exists for selected grade
+  useEffect(() => {
+    if (selectedGradeId !== 'all' && units.length === 1 && selectedUnitId === 'all') {
+      setSelectedUnitId(units[0].id)
+    }
+  }, [selectedGradeId, units, selectedUnitId])
+
+  // Load lessons for selected unit (for table filtering)
+  useEffect(() => {
+    if (selectedGradeId === 'all' || !selectedGradeId || selectedUnitId === 'all' || !selectedUnitId) {
+      // If 'all' is selected, filter cached lessons
+      if (selectedGradeId === 'all') {
+        setLessons(cachedAllLessons)
+      } else if (selectedUnitId === 'all') {
+        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId))
+      } else {
+        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId))
+      }
+      return
+    }
+
+    const unsubscribe = hierarchicalLessonService.listen(selectedGradeId, selectedUnitId, (data) => {
+      setLessons(data)
+    })
+
+    return unsubscribe
+  }, [selectedGradeId, selectedUnitId, cachedAllLessons])
+
+  // Auto-select first lesson if only one exists for selected unit
+  useEffect(() => {
+    if (selectedUnitId !== 'all' && lessons.length === 1 && selectedLessonId === 'all') {
+      setSelectedLessonId(lessons[0].id)
+    }
+  }, [selectedUnitId, lessons, selectedLessonId])
+
+  // Auto-select first section if only one exists for selected lesson
+  useEffect(() => {
+    if (selectedLessonId !== 'all' && sections.length === 1 && selectedSectionId === 'all') {
+      setSelectedSectionId(sections[0].id)
+    }
+  }, [selectedLessonId, sections, selectedSectionId])
+
+  // Load sections for selected lesson (for table filtering)
+  useEffect(() => {
+    if (
+      selectedGradeId === 'all' ||
+      !selectedGradeId ||
+      selectedUnitId === 'all' ||
+      !selectedUnitId ||
+      selectedLessonId === 'all' ||
+      !selectedLessonId
+    ) {
+      // If 'all' is selected, filter cached sections
+      if (selectedGradeId === 'all') {
+        setSections(cachedAllSections)
+      } else if (selectedUnitId === 'all') {
+        setSections(cachedAllSections.filter((section) => section.gradeId === selectedGradeId))
+      } else if (selectedLessonId === 'all') {
+        setSections(cachedAllSections.filter((section) => section.gradeId === selectedGradeId && section.unitId === selectedUnitId))
+      } else {
+        setSections(cachedAllSections.filter((section) => section.gradeId === selectedGradeId && section.unitId === selectedUnitId && section.lessonId === selectedLessonId))
+      }
+      return
+    }
+
+    const unsubscribe = hierarchicalSectionService.listen(
+      selectedGradeId,
+      selectedUnitId,
+      selectedLessonId,
+      (data) => {
+        setSections(data)
+      },
+    )
+
+    return unsubscribe
+  }, [selectedGradeId, selectedUnitId, selectedLessonId, cachedAllSections])
+
+  // Load quizzes for selected section
+  useEffect(() => {
+    if (
+      selectedGradeId === 'all' ||
+      !selectedGradeId ||
+      selectedUnitId === 'all' ||
+      !selectedUnitId ||
+      selectedLessonId === 'all' ||
+      !selectedLessonId ||
+      selectedSectionId === 'all' ||
+      !selectedSectionId
+    ) {
+      // If 'all' is selected, filter cached quizzes
+      setIsLoading(cacheLoading)
+      
+      // Filter cached quizzes based on selected filters
+      let filteredQuizzes = cachedAllQuizzes
+      
+      if (selectedGradeId !== 'all') {
+        filteredQuizzes = filteredQuizzes.filter((quiz) => quiz.gradeId === selectedGradeId)
+      }
+      
+      if (selectedUnitId !== 'all') {
+        filteredQuizzes = filteredQuizzes.filter((quiz) => quiz.unitId === selectedUnitId)
+      }
+      
+      if (selectedLessonId !== 'all') {
+        filteredQuizzes = filteredQuizzes.filter((quiz) => quiz.lessonId === selectedLessonId)
+      }
+      
+      if (selectedSectionId !== 'all') {
+        filteredQuizzes = filteredQuizzes.filter((quiz) => quiz.sectionId === selectedSectionId)
+      }
+      
+      setQuizzes(filteredQuizzes)
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    getQuizzesForSection(selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId)
+      .then((data) => {
+        setQuizzes(data)
+        setIsLoading(false)
+      })
+      .catch((error) => {
+        notifyError('Unable to load quizzes', error instanceof Error ? error.message : undefined)
+        setIsLoading(false)
+      })
+  }, [selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId, cachedAllSections, cacheLoading, notifyError])
 
   useEffect(() => {
     setPageTitle('Quiz Management')
   }, [setPageTitle])
 
+  // Calculate question counts from embedded questions in quizzes
   useEffect(() => {
-    const unsubscribe = questionService.listen((items) => {
-      const grouped = items.reduce<Record<string, number>>((acc, question) => {
-        acc[question.quizId] = (acc[question.quizId] ?? 0) + 1
-        return acc
-      }, {})
-      setQuestionCounts(grouped)
+    const counts: Record<string, number> = {}
+    quizzes.forEach((quiz) => {
+      // Questions are embedded in quiz document
+      const embeddedQuestions = (quiz as any).questions || []
+      counts[quiz.id] = embeddedQuestions.length
     })
-    return () => unsubscribe()
-  }, [])
+    setQuestionCounts(counts)
+  }, [quizzes])
 
-  useEffect(() => {
-    if (!selectedQuiz) {
-      setQuestions([])
-      return
-    }
-    setAreQuestionsLoading(true)
-    const unsubscribe = questionService.listen(
-      (items) => {
-        setQuestions(items.filter((question) => question.quizId === selectedQuiz.id))
-        setAreQuestionsLoading(false)
-      },
-      [where('quizId', '==', selectedQuiz.id)],
-    )
-    return () => unsubscribe()
-  }, [selectedQuiz])
 
   const form = useForm<QuizFormValues>({
     resolver: zodResolver(quizSchema) as any,
@@ -112,10 +241,8 @@ export function QuizzesPage() {
       lessonId: '',
       sectionId: '',
       title: '',
-      description: '',
       quizType: 'fill-in',
       isPublished: false,
-      status: 'active',
     },
   })
 
@@ -128,10 +255,8 @@ export function QuizzesPage() {
         lessonId: editingQuiz.lessonId,
         sectionId: editingQuiz.sectionId,
         title: editingQuiz.title,
-        description: editingQuiz.description ?? '',
         quizType: editingQuiz.quizType,
         isPublished: editingQuiz.isPublished,
-        status: editingQuiz.status,
       })
     } else {
       form.reset({
@@ -140,10 +265,8 @@ export function QuizzesPage() {
         lessonId: selectedLessonId === 'all' ? '' : selectedLessonId,
         sectionId: selectedSectionId === 'all' ? '' : selectedSectionId,
         title: '',
-        description: '',
         quizType: 'fill-in',
         isPublished: false,
-        status: 'active',
       })
     }
   }, [editingQuiz, selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId, form])
@@ -170,11 +293,13 @@ export function QuizzesPage() {
       return
     }
     try {
-      await quizService.remove(quiz.id, user.uid, { title: quiz.title })
-      notifySuccess('Quiz deleted successfully')
-      if (selectedQuiz?.id === quiz.id) {
-        setSelectedQuiz(null)
+      if (!quiz.gradeId || !quiz.unitId || !quiz.lessonId || !quiz.sectionId) {
+        notifyError('Invalid quiz', 'Quiz missing required IDs')
+        return
       }
+      await deleteQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id, user.uid)
+      notifySuccess('Quiz deleted successfully')
+      refreshQuizzes() // Refresh cache
     } catch (error) {
       notifyError('Unable to delete quiz', error instanceof Error ? error.message : undefined)
     }
@@ -185,15 +310,49 @@ export function QuizzesPage() {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!quiz.gradeId || !quiz.unitId || !quiz.lessonId || !quiz.sectionId) {
+      notifyError('Invalid quiz', 'Quiz missing required IDs')
+      return
+    }
+    
+    // Optimistic update
+    const newPublishedState = !quiz.isPublished
+    setQuizzes((prevQuizzes) =>
+      prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: newPublishedState } : q)),
+    )
+    
     try {
-      await quizService.update(
+      // Get current questions
+      const result = await getQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id)
+      if (!result) {
+        // Revert on error
+        setQuizzes((prevQuizzes) =>
+          prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: quiz.isPublished } : q)),
+        )
+        notifyError('Quiz not found', 'Unable to load quiz')
+        return
+      }
+
+      // Update with same questions, just toggle published status
+      await updateQuizWithQuestions(
+        quiz.gradeId,
+        quiz.unitId,
+        quiz.lessonId,
+        quiz.sectionId,
         quiz.id,
-        { isPublished: !quiz.isPublished },
+        { isPublished: newPublishedState },
+        result.questions.map((q) => ({
+          ...q,
+          quizId: undefined, // Remove quizId for update
+        })),
         user.uid,
-        { title: quiz.title, isPublished: !quiz.isPublished },
       )
-      notifySuccess(quiz.isPublished ? 'Quiz unpublished' : 'Quiz published')
+      notifySuccess(newPublishedState ? 'Quiz published' : 'Quiz unpublished')
     } catch (error) {
+      // Revert on error
+      setQuizzes((prevQuizzes) =>
+        prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: quiz.isPublished } : q)),
+      )
       notifyError('Unable to update quiz status', error instanceof Error ? error.message : undefined)
     }
   }
@@ -203,42 +362,95 @@ export function QuizzesPage() {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!values.gradeId || !values.unitId || !values.lessonId || !values.sectionId) {
+      notifyError('All fields required', 'Please select grade, unit, lesson, and section')
+      return
+    }
+
     try {
       if (editingQuiz) {
-        await quizService.update(
+        if (!editingQuiz.gradeId || !editingQuiz.unitId || !editingQuiz.lessonId || !editingQuiz.sectionId) {
+          notifyError('Invalid quiz', 'Quiz missing required IDs')
+          return
+        }
+
+        // Check for duplicate quiz type in the same grade + unit + lesson + section (when changing type)
+        if (editingQuiz.quizType !== values.quizType) {
+          const sectionQuizzes = await getQuizzesForSection(
+            editingQuiz.gradeId,
+            editingQuiz.unitId,
+            editingQuiz.lessonId,
+            editingQuiz.sectionId,
+          )
+          const duplicateQuiz = sectionQuizzes.find(
+            (q) => q.quizType === values.quizType && q.id !== editingQuiz.id,
+          )
+          if (duplicateQuiz) {
+            notifyError('Duplicate quiz type', `A quiz with type "${values.quizType}" already exists for this section.`)
+            return
+          }
+        }
+
+        // Get current questions
+        const result = await getQuizWithQuestions(
+          editingQuiz.gradeId,
+          editingQuiz.unitId,
+          editingQuiz.lessonId,
+          editingQuiz.sectionId,
+          editingQuiz.id,
+        )
+
+        // Update quiz with existing questions
+        await updateQuizWithQuestions(
+          editingQuiz.gradeId,
+          editingQuiz.unitId,
+          editingQuiz.lessonId,
+          editingQuiz.sectionId,
           editingQuiz.id,
           {
-            gradeId: values.gradeId,
-            unitId: values.unitId,
-            lessonId: values.lessonId,
-            sectionId: values.sectionId,
             title: values.title,
-            description: values.description?.trim() || '',
             quizType: values.quizType,
             isPublished: values.isPublished,
-            status: values.status,
           },
+          result?.questions.map((q) => ({
+            ...q,
+            quizId: undefined, // Remove quizId for update
+          })) || [],
           user.uid,
-          { title: values.title },
         )
         notifySuccess('Quiz updated successfully')
+        refreshQuizzes() // Refresh cache
       } else {
-        await quizService.create(
+        // Check for duplicate quiz type in the same grade + unit + lesson + section
+        // Load quizzes for the specific section to check for duplicates
+        const sectionQuizzes = await getQuizzesForSection(
+          values.gradeId,
+          values.unitId,
+          values.lessonId,
+          values.sectionId,
+        )
+        const duplicateQuiz = sectionQuizzes.find((q) => q.quizType === values.quizType)
+        if (duplicateQuiz) {
+          notifyError('Duplicate quiz type', `A quiz with type "${values.quizType}" already exists for this section.`)
+          return
+        }
+
+        // Create new quiz with empty questions array (can add questions after)
+        await createQuizWithQuestions(
           {
             gradeId: values.gradeId,
             unitId: values.unitId,
             lessonId: values.lessonId,
             sectionId: values.sectionId,
             title: values.title,
-            description: values.description?.trim() || '',
             quizType: values.quizType,
             isPublished: values.isPublished,
-            status: values.status,
           } as Omit<Quiz, 'id' | 'createdAt' | 'updatedAt'>,
+          [], // Start with no questions
           user.uid,
-          { title: values.title },
         )
         notifySuccess('Quiz created successfully')
+        refreshQuizzes() // Refresh cache
       }
       setIsModalOpen(false)
     } catch (error) {
@@ -246,13 +458,21 @@ export function QuizzesPage() {
     }
   })
 
-  const handleSelectQuiz = (quiz: Quiz) => {
-    setSelectedQuiz(quiz)
-  }
+  const [previewQuiz, setPreviewQuiz] = useState<Quiz | null>(null)
+  const [previewQuestions, setPreviewQuestions] = useState<Question[]>([])
 
-  const handlePreview = () => {
-    if (!selectedQuiz) return
+  const handlePreview = async (quiz: Quiz) => {
+    setPreviewQuiz(quiz)
     setPreviewOpen(true)
+    // Load questions for preview
+    try {
+      const result = await getQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id)
+      if (result) {
+        setPreviewQuestions(result.questions)
+      }
+    } catch (error) {
+      setPreviewQuestions([])
+    }
   }
 
   const handleCreateQuestion = async (values: any) => {
@@ -260,10 +480,58 @@ export function QuizzesPage() {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
+      notifyError('Invalid quiz', 'Quiz missing required IDs')
+      return
+    }
+
+    // Ensure question type matches quiz type
+    const questionType = getQuestionTypeFromQuizType(selectedQuiz.quizType)
+    if (values.type && values.type !== questionType) {
+      notifyError('Type mismatch', `Question type must match quiz type (${selectedQuiz.quizType})`)
+      return
+    }
+
     try {
       setIsSavingQuestion(true)
-      await questionService.create(values as Omit<Question, 'id' | 'createdAt' | 'updatedAt'>, user.uid, { quizId: selectedQuiz.id })
+      // Add new question to existing questions array
+      const newQuestion: Omit<Question, 'id' | 'createdAt' | 'updatedAt' | 'quizId'> = {
+        ...values,
+        type: questionType, // Force type to match quiz type
+        order: values.order ?? questions.length + 1,
+      }
+
+      const updatedQuestions = [...questions, newQuestion as Question]
+
+      // Update quiz with new questions array
+      await updateQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+        {}, // No quiz updates
+        updatedQuestions.map((q) => ({
+          ...q,
+          quizId: undefined, // Remove quizId for update
+        })),
+        user.uid,
+      )
+
+      // Reload questions
+      const result = await getQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+      )
+      if (result) {
+        setQuestions(result.questions)
+      }
+
       notifySuccess('Question added')
+      setRefreshTrigger((prev) => prev + 1)
     } catch (error) {
       notifyError('Unable to add question', error instanceof Error ? error.message : undefined)
     } finally {
@@ -272,14 +540,56 @@ export function QuizzesPage() {
   }
 
   const handleUpdateQuestion = async (id: string, values: any) => {
-    if (!user?.uid) {
+    if (!user?.uid || !selectedQuiz) {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
+      notifyError('Invalid quiz', 'Quiz missing required IDs')
+      return
+    }
+
+    // Ensure question type matches quiz type
+    const questionType = getQuestionTypeFromQuizType(selectedQuiz.quizType)
+    if (values.type && values.type !== questionType) {
+      notifyError('Type mismatch', `Question type must match quiz type (${selectedQuiz.quizType})`)
+      return
+    }
+
     try {
       setIsSavingQuestion(true)
-      await questionService.update(id, values, user.uid, { quizId: selectedQuiz?.id })
+      // Update question in array, ensuring type matches quiz type
+      const updatedQuestions = questions.map((q) => (q.id === id ? { ...q, ...values, type: questionType } : q))
+
+      // Update quiz with modified questions array
+      await updateQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+        {}, // No quiz updates
+        updatedQuestions.map((q) => ({
+          ...q,
+          quizId: undefined, // Remove quizId for update
+        })),
+        user.uid,
+      )
+
+      // Reload questions
+      const result = await getQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+      )
+      if (result) {
+        setQuestions(result.questions)
+      }
+
       notifySuccess('Question updated')
+      setRefreshTrigger((prev) => prev + 1)
     } catch (error) {
       notifyError('Unable to update question', error instanceof Error ? error.message : undefined)
     } finally {
@@ -294,12 +604,46 @@ export function QuizzesPage() {
       confirmLabel: 'Delete',
     })
     if (!confirmed) return
-    if (!user?.uid) {
+    if (!user?.uid || !selectedQuiz) {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
+      notifyError('Invalid quiz', 'Quiz missing required IDs')
+      return
+    }
+
     try {
-      await questionService.remove(question.id, user.uid, { quizId: question.quizId })
+      // Remove question from array
+      const updatedQuestions = questions.filter((q) => q.id !== question.id)
+
+      // Update quiz with modified questions array
+      await updateQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+        {}, // No quiz updates
+        updatedQuestions.map((q) => ({
+          ...q,
+          quizId: undefined, // Remove quizId for update
+        })),
+        user.uid,
+      )
+
+      // Reload questions
+      const result = await getQuizWithQuestions(
+        selectedQuiz.gradeId,
+        selectedQuiz.unitId,
+        selectedQuiz.lessonId,
+        selectedQuiz.sectionId,
+        selectedQuiz.id,
+      )
+      if (result) {
+        setQuestions(result.questions)
+      }
+
       notifySuccess('Question deleted')
     } catch (error) {
       notifyError('Unable to delete question', error instanceof Error ? error.message : undefined)
@@ -307,7 +651,7 @@ export function QuizzesPage() {
   }
 
   const gradeMap = useMemo(() => new Map(grades.map((grade) => [grade.id, grade.name])), [grades])
-  const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, unit.title])), [units])
+  const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, `Unit ${unit.number}`])), [units])
   const lessonMap = useMemo(() => new Map(lessons.map((lesson) => [lesson.id, lesson.title])), [lessons])
   const sectionMap = useMemo(() => new Map(sections.map((section) => [section.id, section.title])), [sections])
 
@@ -325,18 +669,46 @@ export function QuizzesPage() {
   })
 
   const rows: QuizTableRow[] = quizzes
-    .map((quiz) => ({
+    .map((quiz) => {
+      // Handle both 'quizType' and 'type' fields (Firestore uses 'type' for student app format)
+      const quizType = (quiz as any).quizType || (quiz as any).type || 'fill-in'
+      return {
       ...quiz,
+        quizType: quizType, // Ensure quizType is always set
       gradeName: gradeMap.get(quiz.gradeId) ?? '—',
       unitTitle: unitMap.get(quiz.unitId) ?? '—',
       lessonTitle: lessonMap.get(quiz.lessonId) ?? '—',
       sectionTitle: sectionMap.get(quiz.sectionId) ?? '—',
       questionCount: questionCounts[quiz.id] ?? 0,
-    }))
-    .sort((a, b) => a.title.localeCompare(b.title))
+      }
+    })
+    .sort((a, b) => {
+      // First sort by grade name
+      const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
+      if (gradeCompare !== 0) return gradeCompare
+      // Then sort by unit title
+      const unitCompare = (a.unitTitle || '').localeCompare(b.unitTitle || '')
+      if (unitCompare !== 0) return unitCompare
+      // Then sort by lesson title
+      const lessonCompare = (a.lessonTitle || '').localeCompare(b.lessonTitle || '')
+      if (lessonCompare !== 0) return lessonCompare
+      // Then sort by section title
+      const sectionCompare = (a.sectionTitle || '').localeCompare(b.sectionTitle || '')
+      if (sectionCompare !== 0) return sectionCompare
+      // Finally sort by quiz title
+      return a.title.localeCompare(b.title)
+    })
 
   const columns: Array<DataTableColumn<QuizTableRow>> = [
-    { key: 'title', header: 'Quiz Title' },
+    { 
+      key: 'title', 
+      header: 'Quiz Title',
+      render: (row) => (
+        <div className="truncate max-w-[200px]" title={row.title}>
+          {row.title}
+        </div>
+      ),
+    },
     { key: 'quizType', header: 'Type', render: (row) => <Badge variant="secondary">{row.quizType}</Badge> },
     {
       key: 'questionCount',
@@ -344,27 +716,50 @@ export function QuizzesPage() {
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.questionCount}</span>,
     },
-    { key: 'sectionTitle', header: 'Section' },
-    { key: 'lessonTitle', header: 'Lesson' },
-    {
-      key: 'isPublished',
-      header: 'Status',
+    { 
+      key: 'sectionTitle', 
+      header: 'Section',
       render: (row) => (
-        <Badge variant={row.isPublished ? 'default' : 'secondary'}>{row.isPublished ? 'Published' : 'Draft'}</Badge>
+        <div className="truncate max-w-[150px]" title={row.sectionTitle}>
+          {row.sectionTitle}
+        </div>
+      ),
+    },
+    { 
+      key: 'lessonTitle', 
+      header: 'Lesson',
+      render: (row) => (
+        <div className="truncate max-w-[150px]" title={row.lessonTitle}>
+          {row.lessonTitle}
+        </div>
       ),
     },
     {
-      key: 'manage',
-      header: 'Builder',
+      key: 'isPublished',
+      header: 'Published',
+      align: 'center',
       render: (row) => (
-        <Button variant="ghost" size="sm" onClick={() => handleSelectQuiz(row)}>
-          Build
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch 
+            checked={row.isPublished ?? false} 
+            onCheckedChange={(checked) => {
+              handlePublishToggle(row)
+            }}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'preview',
+      header: 'Preview',
+      render: (row) => (
+        <Button variant="outline" size="sm" onClick={() => handlePreview(row)}>
+          Preview
         </Button>
       ),
     },
   ]
 
-  const selectedQuizQuestions = selectedQuiz ? questions : []
 
   return (
     <div className="space-y-6">
@@ -410,7 +805,7 @@ export function QuizzesPage() {
               <SelectItem value="all">All units</SelectItem>
               {filteredUnits.map((unit) => (
                 <SelectItem key={unit.id} value={unit.id}>
-                  {unit.title}
+                  Unit {unit.number}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -462,44 +857,12 @@ export function QuizzesPage() {
         onDelete={handleDelete}
       />
 
-      {selectedQuiz && (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.2em] text-primary/60">{selectedQuiz.quizType}</p>
-              <h3 className="text-xl font-semibold text-foreground">{selectedQuiz.title}</h3>
-              <p className="text-sm text-muted-foreground">{selectedQuiz.description || 'No description provided.'}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => handlePublishToggle(selectedQuiz)}>
-                {selectedQuiz.isPublished ? 'Unpublish' : 'Publish'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePreview} disabled={!selectedQuizQuestions.length}>
-                Preview Quiz
-              </Button>
-              <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setSelectedQuiz(null)}>
-                Close Builder
-              </Button>
-            </div>
-          </div>
-
-          <QuestionBuilder
-            quiz={selectedQuiz}
-            questions={selectedQuizQuestions}
-            onCreate={handleCreateQuestion}
-            onUpdate={handleUpdateQuestion}
-            onDelete={handleDeleteQuestion}
-            isSaving={isSavingQuestion}
-          />
-          {areQuestionsLoading && <p className="text-sm text-muted-foreground">Loading questions…</p>}
-        </div>
-      )}
 
       <FormModal
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title={editingQuiz ? 'Edit Quiz' : 'Add Quiz'}
-        description="Quizzes inherit their type from the selected section."
+        description="Create quizzes and select the quiz type for each section."
         onSubmit={onSubmit}
         submitLabel={editingQuiz ? 'Update Quiz' : 'Create Quiz'}
         isSubmitting={form.formState.isSubmitting}
@@ -518,7 +881,6 @@ export function QuizzesPage() {
                       form.setValue('unitId', '')
                       form.setValue('lessonId', '')
                       form.setValue('sectionId', '')
-                      form.setValue('quizType', 'fill-in')
                     }}
                   >
                     <FormControl>
@@ -540,7 +902,14 @@ export function QuizzesPage() {
             />
             <FormField
               name="unitId"
-              render={({ field }) => (
+              render={({ field }) => {
+                const selectedGradeId = form.getValues('gradeId')
+                const filteredUnits = selectedGradeId
+                  ? cachedAllUnits.filter((unit) => unit.gradeId === selectedGradeId)
+                  : []
+                const hasUnits = filteredUnits.length > 0
+                
+                return (
                 <FormItem>
                   <FormLabel>Unit</FormLabel>
                   <Select
@@ -549,31 +918,48 @@ export function QuizzesPage() {
                       field.onChange(value)
                       form.setValue('lessonId', '')
                       form.setValue('sectionId', '')
-                      form.setValue('quizType', 'fill-in')
                     }}
+                      disabled={!selectedGradeId || !hasUnits}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
+                          <SelectValue placeholder={!selectedGradeId ? "Select grade first" : "Select unit"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {units
-                        .filter((unit) => unit.gradeId === form.getValues('gradeId'))
-                        .map((unit) => (
+                        {!selectedGradeId ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Please select a grade first.
+                          </div>
+                        ) : !hasUnits ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No units available for this grade. Please create a unit first.
+                          </div>
+                        ) : (
+                          filteredUnits.map((unit) => (
                           <SelectItem key={unit.id} value={unit.id}>
-                            {unit.title}
+                              Unit {unit.number}
                           </SelectItem>
-                        ))}
+                          ))
+                        )}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
+                )
+              }}
             />
             <FormField
               name="lessonId"
-              render={({ field }) => (
+              render={({ field }) => {
+                const selectedGradeId = form.getValues('gradeId')
+                const selectedUnitId = form.getValues('unitId')
+                const filteredLessons = selectedGradeId && selectedUnitId
+                  ? cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId)
+                  : []
+                const hasLessons = filteredLessons.length > 0
+                
+                return (
                 <FormItem>
                   <FormLabel>Lesson</FormLabel>
                   <Select
@@ -581,56 +967,110 @@ export function QuizzesPage() {
                     onValueChange={(value: string) => {
                       field.onChange(value)
                       form.setValue('sectionId', '')
-                      form.setValue('quizType', 'fill-in')
                     }}
+                      disabled={!selectedGradeId || !selectedUnitId || !hasLessons}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select lesson" />
+                          <SelectValue placeholder={!selectedUnitId ? "Select unit first" : "Select lesson"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {lessons
-                        .filter((lesson) => lesson.unitId === form.getValues('unitId'))
-                        .map((lesson) => (
+                        {!selectedUnitId ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Please select a unit first.
+                          </div>
+                        ) : !hasLessons ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No lessons available for this unit. Please create a lesson first.
+                          </div>
+                        ) : (
+                          filteredLessons.map((lesson) => (
                           <SelectItem key={lesson.id} value={lesson.id}>
                             {lesson.title}
                           </SelectItem>
-                        ))}
+                          ))
+                        )}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
+                )
+              }}
             />
             <FormField
               name="sectionId"
-              render={({ field }) => (
+              render={({ field }) => {
+                const selectedGradeId = form.getValues('gradeId')
+                const selectedUnitId = form.getValues('unitId')
+                const selectedLessonId = form.getValues('lessonId')
+                const filteredSections = selectedGradeId && selectedUnitId && selectedLessonId
+                  ? cachedAllSections.filter((section) => section.gradeId === selectedGradeId && section.unitId === selectedUnitId && section.lessonId === selectedLessonId)
+                  : []
+                const hasSections = filteredSections.length > 0
+                
+                return (
                 <FormItem>
                   <FormLabel>Section</FormLabel>
                   <Select
                     value={field.value}
-                    onValueChange={(value: string) => {
-                      field.onChange(value)
-                      const section = sections.find((s) => s.id === value)
-                      form.setValue('quizType', section?.quizType ?? 'fill-in')
-                    }}
+                      onValueChange={field.onChange}
+                      disabled={!selectedGradeId || !selectedUnitId || !selectedLessonId || !hasSections}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select section" />
+                          <SelectValue placeholder={!selectedLessonId ? "Select lesson first" : "Select section"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {sections
-                        .filter((section) => section.lessonId === form.getValues('lessonId'))
-                        .map((section) => (
+                        {!selectedLessonId ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Please select a lesson first.
+                          </div>
+                        ) : !hasSections ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No sections available for this lesson. Please create a section first.
+                          </div>
+                        ) : (
+                          filteredSections.map((section) => (
                           <SelectItem key={section.id} value={section.id}>
                             {section.title}
                           </SelectItem>
-                        ))}
+                          ))
+                        )}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+                )
+              }}
+            />
+            <FormField
+              name="quizType"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Quiz Type</FormLabel>
+                  {editingQuiz ? (
+                    <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm">
+                      <Badge variant="secondary">{field.value}</Badge>
+                      <p className="ml-2 text-xs text-muted-foreground">Quiz type cannot be changed after creation</p>
+                    </div>
+                  ) : (
+                    <Select value={field.value} onValueChange={field.onChange} disabled={!!editingQuiz}>
+                  <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select quiz type" />
+                        </SelectTrigger>
+                  </FormControl>
+                      <SelectContent>
+                        {quizTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
@@ -643,28 +1083,6 @@ export function QuizzesPage() {
                   <FormControl>
                     <Input placeholder="e.g., Grammar Challenge" {...field} />
                   </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Optional instructions" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="quizType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quiz Type</FormLabel>
-                  <Input value={field.value} readOnly />
                   <FormMessage />
                 </FormItem>
               )}
@@ -690,13 +1108,13 @@ export function QuizzesPage() {
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Quiz Preview · {selectedQuiz?.title}</DialogTitle>
+            <DialogTitle>Quiz Preview · {previewQuiz?.title}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {selectedQuizQuestions.length === 0 ? (
+            {previewQuestions.length === 0 ? (
               <p className="text-sm text-muted-foreground">Add questions to preview this quiz.</p>
             ) : (
-              selectedQuizQuestions
+              previewQuestions
                 .slice()
                 .sort((a, b) => a.order - b.order)
                 .map((question, index) => (

@@ -49,8 +49,10 @@ export function Header({ onMenuClick }: HeaderProps) {
             New Quiz
           </Link>
         </Button>
-        <Button variant="ghost" size="icon" className="rounded-full border border-border bg-background/60">
-          <Bell className="h-5 w-5 text-muted-foreground" />
+        <Button variant="ghost" size="icon" className="rounded-full border border-border bg-background/60" asChild>
+          <Link to="/notifications">
+            <Bell className="h-5 w-5 text-muted-foreground" />
+          </Link>
         </Button>
 
         <DropdownMenu>

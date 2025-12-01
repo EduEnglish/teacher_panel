@@ -5,19 +5,21 @@ import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { sectionSchema, type SectionFormValues } from '@/utils/schemas'
-import { statusOptions, quizTypeOptions } from '@/utils/constants'
-import { gradeService, lessonService, sectionService, unitService } from '@/services/firebase'
-import type { Grade, Lesson, Section, Unit } from '@/types/models'
-import { useCollection } from '@/hooks/useCollection'
+import { gradeService } from '@/services/firebase'
+import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
+import { getQuizzesForSection } from '@/services/quizBuilderService'
+import { useCurriculumCache } from '@/context/CurriculumCacheContext'
+import type { Grade, Lesson, Quiz, Section, Unit } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
-type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string }
+type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string; quizCount: number }
 
 export function SectionsPage() {
   const { user } = useAuth()
@@ -28,25 +30,116 @@ export function SectionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSection, setEditingSection] = useState<Section | null>(null)
 
-  const { data: grades } = useCollection<Grade>(gradeService.listen)
-  const unitsConstraints = useMemo(() => (selectedGradeId === 'all' ? undefined : [where('gradeId', '==', selectedGradeId)]), [selectedGradeId])
-  const { data: units } = useCollection<Unit>(unitService.listen, unitsConstraints)
-  const lessonsConstraints = useMemo(() => {
-    const constraints = []
-    if (selectedGradeId !== 'all') constraints.push(where('gradeId', '==', selectedGradeId))
-    if (selectedUnitId !== 'all') constraints.push(where('unitId', '==', selectedUnitId))
-    return constraints.length ? constraints : undefined
-  }, [selectedGradeId, selectedUnitId])
-  const { data: lessons } = useCollection<Lesson>(lessonService.listen, lessonsConstraints)
+  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshSections } = useCurriculumCache()
+  
+  // Auto-select first grade if only one exists
+  useEffect(() => {
+    if (grades.length === 1 && selectedGradeId === 'all') {
+      setSelectedGradeId(grades[0].id)
+    }
+  }, [grades, selectedGradeId])
+  
+  const [units, setUnits] = useState<Unit[]>([])
+  const [lessons, setLessons] = useState<Lesson[]>([])
+  const [sections, setSections] = useState<Section[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
-  const sectionsConstraints = useMemo(() => {
-    const constraints = []
-    if (selectedGradeId !== 'all') constraints.push(where('gradeId', '==', selectedGradeId))
-    if (selectedUnitId !== 'all') constraints.push(where('unitId', '==', selectedUnitId))
-    if (selectedLessonId !== 'all') constraints.push(where('lessonId', '==', selectedLessonId))
-    return constraints.length ? constraints : undefined
-  }, [selectedGradeId, selectedUnitId, selectedLessonId])
-  const { data: sections, isLoading } = useCollection<Section>(sectionService.listen, sectionsConstraints)
+  // Load units for selected grade (for table filtering)
+  useEffect(() => {
+    if (selectedGradeId === 'all' || !selectedGradeId) {
+      // If 'all', use cached units
+      setUnits(cachedAllUnits)
+      return
+    }
+
+    const unsubscribe = hierarchicalUnitService.listen(selectedGradeId, (data) => {
+      setUnits(data)
+    })
+
+    return unsubscribe
+  }, [selectedGradeId, cachedAllUnits])
+
+  // Auto-select first unit if only one exists for selected grade
+  useEffect(() => {
+    if (selectedGradeId !== 'all' && units.length === 1 && selectedUnitId === 'all') {
+      setSelectedUnitId(units[0].id)
+    }
+  }, [selectedGradeId, units, selectedUnitId])
+
+  // Load lessons for selected unit (for table filtering)
+  useEffect(() => {
+    if (selectedGradeId === 'all' || !selectedGradeId || selectedUnitId === 'all' || !selectedUnitId) {
+      // If 'all' is selected, filter cached lessons
+      if (selectedGradeId === 'all') {
+        setLessons(cachedAllLessons)
+      } else if (selectedUnitId === 'all') {
+        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId))
+      } else {
+        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId))
+      }
+      return
+    }
+
+    const unsubscribe = hierarchicalLessonService.listen(selectedGradeId, selectedUnitId, (data) => {
+      setLessons(data)
+    })
+
+    return unsubscribe
+  }, [selectedGradeId, selectedUnitId, cachedAllLessons])
+
+  // Auto-select first lesson if only one exists for selected unit
+  useEffect(() => {
+    if (selectedUnitId !== 'all' && lessons.length === 1 && selectedLessonId === 'all') {
+      setSelectedLessonId(lessons[0].id)
+    }
+  }, [selectedUnitId, lessons, selectedLessonId])
+
+  // Load sections for selected lesson
+  useEffect(() => {
+    if (
+      selectedGradeId === 'all' ||
+      !selectedGradeId ||
+      selectedUnitId === 'all' ||
+      !selectedUnitId ||
+      selectedLessonId === 'all' ||
+      !selectedLessonId
+    ) {
+      // If 'all' is selected, filter cached sections
+      setIsLoading(cacheLoading)
+      
+      // Filter cached sections based on selected filters
+      let filteredSections = cachedAllSections
+      
+      if (selectedGradeId !== 'all') {
+        filteredSections = filteredSections.filter((section) => section.gradeId === selectedGradeId)
+      }
+      
+      if (selectedUnitId !== 'all') {
+        filteredSections = filteredSections.filter((section) => section.unitId === selectedUnitId)
+      }
+      
+      if (selectedLessonId !== 'all') {
+        filteredSections = filteredSections.filter((section) => section.lessonId === selectedLessonId)
+      }
+      
+      setSections(filteredSections)
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    const unsubscribe = hierarchicalSectionService.listen(
+      selectedGradeId,
+      selectedUnitId,
+      selectedLessonId,
+      (data) => {
+        setSections(data)
+        setIsLoading(false)
+      },
+    )
+
+    return unsubscribe
+  }, [selectedGradeId, selectedUnitId, selectedLessonId, cachedAllSections, cacheLoading])
 
   const form = useForm<SectionFormValues>({
     resolver: zodResolver(sectionSchema) as any,
@@ -55,9 +148,7 @@ export function SectionsPage() {
       unitId: '',
       lessonId: '',
       title: '',
-      quizType: 'fill-in',
-      description: '',
-      status: 'active',
+      isPublished: false,
     },
   })
 
@@ -73,9 +164,7 @@ export function SectionsPage() {
         unitId: editingSection.unitId,
         lessonId: editingSection.lessonId,
         title: editingSection.title,
-        quizType: editingSection.quizType,
-        description: editingSection.description ?? '',
-        status: editingSection.status,
+        isPublished: editingSection.isPublished ?? false,
       })
     } else {
       form.reset({
@@ -83,26 +172,42 @@ export function SectionsPage() {
         unitId: selectedUnitId === 'all' ? '' : selectedUnitId,
         lessonId: selectedLessonId === 'all' ? '' : selectedLessonId,
         title: '',
-        quizType: 'fill-in',
-        description: '',
-        status: 'active',
+        isPublished: false,
       })
     }
   }, [editingSection, selectedGradeId, selectedUnitId, selectedLessonId, form])
 
   const rows = useMemo<SectionTableRow[]>(() => {
     const gradeMap = new Map(grades.map((grade) => [grade.id, grade.name]))
-    const unitMap = new Map(units.map((unit) => [unit.id, unit.title]))
+    const unitMap = new Map(units.map((unit) => [unit.id, `Unit ${unit.number}`]))
     const lessonMap = new Map(lessons.map((lesson) => [lesson.id, lesson.title]))
+    const quizzesPerSection = cachedAllQuizzes.reduce<Record<string, number>>((acc, quiz) => {
+      const key = `${quiz.gradeId}_${quiz.unitId}_${quiz.lessonId}_${quiz.sectionId}`
+      acc[key] = (acc[key] ?? 0) + 1
+      return acc
+    }, {})
     return sections
       .map((section) => ({
         ...section,
         gradeName: gradeMap.get(section.gradeId) ?? '—',
         unitTitle: unitMap.get(section.unitId) ?? '—',
         lessonTitle: lessonMap.get(section.lessonId) ?? '—',
+        quizCount: quizzesPerSection[`${section.gradeId}_${section.unitId}_${section.lessonId}_${section.id}`] ?? 0,
       }))
-      .sort((a, b) => a.title.localeCompare(b.title))
-  }, [sections, grades, units, lessons])
+      .sort((a, b) => {
+        // First sort by grade name
+        const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
+        if (gradeCompare !== 0) return gradeCompare
+        // Then sort by unit title
+        const unitCompare = (a.unitTitle || '').localeCompare(b.unitTitle || '')
+        if (unitCompare !== 0) return unitCompare
+        // Then sort by lesson title
+        const lessonCompare = (a.lessonTitle || '').localeCompare(b.lessonTitle || '')
+        if (lessonCompare !== 0) return lessonCompare
+        // Finally sort by section title
+        return a.title.localeCompare(b.title)
+      })
+  }, [sections, grades, units, lessons, cachedAllQuizzes])
 
   const handleOpenNew = () => {
     setEditingSection(null)
@@ -112,6 +217,36 @@ export function SectionsPage() {
   const handleEdit = (section: Section) => {
     setEditingSection(section)
     setIsModalOpen(true)
+  }
+
+  const handleTogglePublish = async (section: Section) => {
+    if (!user?.uid) {
+      notifyError('Missing admin session', 'Please sign in again.')
+      return
+    }
+    if (!section.gradeId || !section.unitId || !section.lessonId) {
+      notifyError('Invalid section', 'Section missing required IDs')
+      return
+    }
+    
+    // Optimistic update
+    const newPublishedState = !section.isPublished
+    setSections((prevSections) =>
+      prevSections.map((s) => (s.id === section.id ? { ...s, isPublished: newPublishedState } : s)),
+    )
+    
+    try {
+      await hierarchicalSectionService.update(section.gradeId, section.unitId, section.lessonId, section.id, {
+        isPublished: newPublishedState,
+      })
+      notifySuccess(newPublishedState ? 'Section published' : 'Section unpublished')
+    } catch (error) {
+      // Revert on error
+      setSections((prevSections) =>
+        prevSections.map((s) => (s.id === section.id ? { ...s, isPublished: section.isPublished } : s)),
+      )
+      notifyError('Unable to update section', error instanceof Error ? error.message : undefined)
+    }
   }
 
   const handleDelete = async (section: Section) => {
@@ -126,8 +261,13 @@ export function SectionsPage() {
       return
     }
     try {
-      await sectionService.remove(section.id, user.uid, { title: section.title })
+      if (!section.gradeId || !section.unitId || !section.lessonId) {
+        notifyError('Invalid section', 'Section missing required IDs')
+        return
+      }
+      await hierarchicalSectionService.remove(section.gradeId, section.unitId, section.lessonId, section.id)
       notifySuccess('Section deleted successfully')
+      refreshSections() // Refresh cache
     } catch (error) {
       notifyError('Unable to delete section', error instanceof Error ? error.message : undefined)
     }
@@ -139,37 +279,49 @@ export function SectionsPage() {
       return
     }
     try {
+      if (!values.gradeId || !values.unitId || !values.lessonId) {
+        notifyError('Grade, Unit, and Lesson required', 'Please select all required fields')
+        return
+      }
+
+      // Check for duplicate section title in the same grade + unit + lesson
+      const duplicateSection = sections.find(
+        (s) =>
+          s.title.toLowerCase().trim() === values.title.toLowerCase().trim() &&
+          s.gradeId === values.gradeId &&
+          s.unitId === values.unitId &&
+          s.lessonId === values.lessonId &&
+          s.id !== editingSection?.id,
+      )
+      if (duplicateSection) {
+        notifyError('Duplicate section', `A section with the title "${values.title}" already exists for this lesson.`)
+        return
+      }
+
       if (editingSection) {
-        await sectionService.update(
+        if (!editingSection.gradeId || !editingSection.unitId || !editingSection.lessonId) {
+          notifyError('Invalid section', 'Section missing required IDs')
+          return
+        }
+        await hierarchicalSectionService.update(
+          editingSection.gradeId,
+          editingSection.unitId,
+          editingSection.lessonId,
           editingSection.id,
           {
-            gradeId: values.gradeId,
-            unitId: values.unitId,
-            lessonId: values.lessonId,
             title: values.title,
-            quizType: values.quizType,
-            description: values.description?.trim() || '',
-            status: values.status,
+            isPublished: values.isPublished,
           },
-          user.uid,
-          { title: values.title },
         )
         notifySuccess('Section updated successfully')
+        refreshSections() // Refresh cache
       } else {
-        await sectionService.create(
-          {
-            gradeId: values.gradeId,
-            unitId: values.unitId,
-            lessonId: values.lessonId,
+        await hierarchicalSectionService.create(values.gradeId, values.unitId, values.lessonId, {
             title: values.title,
-            quizType: values.quizType,
-            description: values.description?.trim() || '',
-            status: values.status,
-          } as Omit<Section, 'id' | 'createdAt' | 'updatedAt'>,
-          user.uid,
-          { title: values.title },
-        )
+          isPublished: values.isPublished,
+        })
         notifySuccess('Section created successfully')
+        refreshSections() // Refresh cache
       }
       setIsModalOpen(false)
     } catch (error) {
@@ -178,12 +330,63 @@ export function SectionsPage() {
   })
 
   const columns: Array<DataTableColumn<SectionTableRow>> = [
-    { key: 'title', header: 'Section Title' },
-    { key: 'quizType', header: 'Quiz Type', render: (row) => <Badge variant="secondary">{row.quizType}</Badge> },
-    { key: 'lessonTitle', header: 'Lesson' },
-    { key: 'unitTitle', header: 'Unit' },
-    { key: 'gradeName', header: 'Grade' },
-    { key: 'status', header: 'Status', render: (row) => <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>{row.status}</Badge> },
+    { 
+      key: 'title', 
+      header: 'Section Title',
+      render: (row) => (
+        <div className="truncate max-w-[200px]" title={row.title}>
+          {row.title}
+        </div>
+      ),
+    },
+    { 
+      key: 'lessonTitle', 
+      header: 'Lesson',
+      render: (row) => (
+        <div className="truncate max-w-[150px]" title={row.lessonTitle}>
+          {row.lessonTitle}
+        </div>
+      ),
+    },
+    { 
+      key: 'unitTitle', 
+      header: 'Unit',
+      render: (row) => (
+        <div className="truncate max-w-[120px]" title={row.unitTitle}>
+          {row.unitTitle}
+        </div>
+      ),
+    },
+    { 
+      key: 'gradeName', 
+      header: 'Grade',
+      render: (row) => (
+        <div className="truncate max-w-[150px]" title={row.gradeName}>
+          {row.gradeName}
+        </div>
+      ),
+    },
+    {
+      key: 'quizCount',
+      header: 'Quizzes',
+      align: 'center',
+      render: (row) => <span className="font-semibold text-foreground">{row.quizCount}</span>,
+    },
+    {
+      key: 'isPublished',
+      header: 'Published',
+      align: 'center',
+      render: (row) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch 
+            checked={row.isPublished ?? false} 
+            onCheckedChange={(checked) => {
+              handleTogglePublish(row)
+            }}
+          />
+        </div>
+      ),
+    },
   ]
 
   const filteredUnits = selectedGradeId === 'all' ? units : units.filter((unit) => unit.gradeId === selectedGradeId)
@@ -235,7 +438,7 @@ export function SectionsPage() {
               <SelectItem value="all">All units</SelectItem>
               {filteredUnits.map((unit) => (
                 <SelectItem key={unit.id} value={unit.id}>
-                  {unit.title}
+                  Unit {unit.number}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -311,7 +514,14 @@ export function SectionsPage() {
             />
             <FormField
               name="unitId"
-              render={({ field }) => (
+              render={({ field }) => {
+                const selectedGradeId = form.getValues('gradeId')
+                const filteredUnits = selectedGradeId
+                  ? allUnits.filter((unit) => unit.gradeId === selectedGradeId)
+                  : []
+                const hasUnits = filteredUnits.length > 0
+                
+                return (
                 <FormItem>
                   <FormLabel>Unit</FormLabel>
                   <Select
@@ -320,118 +530,105 @@ export function SectionsPage() {
                       field.onChange(value)
                       form.setValue('lessonId', '')
                     }}
+                      disabled={!selectedGradeId || !hasUnits}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select unit" />
+                          <SelectValue placeholder={!selectedGradeId ? "Select grade first" : "Select unit"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {units
-                        .filter((unit) => unit.gradeId === form.getValues('gradeId'))
-                        .map((unit) => (
+                        {!selectedGradeId ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Please select a grade first.
+                          </div>
+                        ) : !hasUnits ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No units available for this grade. Please create a unit first.
+                          </div>
+                        ) : (
+                          filteredUnits.map((unit) => (
                           <SelectItem key={unit.id} value={unit.id}>
-                            {unit.title}
+                              Unit {unit.number}
                           </SelectItem>
-                        ))}
+                          ))
+                        )}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
+                )
+              }}
             />
             <FormField
               name="lessonId"
-              render={({ field }) => (
+              render={({ field }) => {
+                const selectedGradeId = form.getValues('gradeId')
+                const selectedUnitId = form.getValues('unitId')
+                const filteredLessons = selectedGradeId && selectedUnitId
+                  ? cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId)
+                  : []
+                const hasLessons = filteredLessons.length > 0
+                
+                return (
                 <FormItem>
                   <FormLabel>Lesson</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
+                    <Select 
+                      value={field.value} 
+                      onValueChange={field.onChange}
+                      disabled={!selectedGradeId || !selectedUnitId || !hasLessons}
+                    >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select lesson" />
+                          <SelectValue placeholder={!selectedUnitId ? "Select unit first" : "Select lesson"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {lessons
-                        .filter((lesson) => lesson.unitId === form.getValues('unitId'))
-                        .map((lesson) => (
+                        {!selectedUnitId ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            Please select a unit first.
+                          </div>
+                        ) : !hasLessons ? (
+                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+                            No lessons available for this unit. Please create a lesson first.
+                          </div>
+                        ) : (
+                          filteredLessons.map((lesson) => (
                           <SelectItem key={lesson.id} value={lesson.id}>
                             {lesson.title}
                           </SelectItem>
-                        ))}
+                          ))
+                        )}
                     </SelectContent>
                   </Select>
                   <FormMessage />
                 </FormItem>
-              )}
+                )
+              }}
             />
             <FormField
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Section Title</FormLabel>
+                  <FormLabel>Section Title (max 25 characters)</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Vocabulary Drill" {...field} />
+                    <Input placeholder="e.g., Vocabulary Drill" maxLength={25} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <FormField
-              name="quizType"
+              name="isPublished"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quiz Type</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select quiz type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {quizTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Status</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Publish to Mobile App</FormLabel>
+                    <p className="text-xs text-muted-foreground">Only published sections appear to students.</p>
+                  </div>
                   <FormControl>
-                    <Input placeholder="Optional support details" {...field} />
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
-                  <FormMessage />
                 </FormItem>
               )}
             />
