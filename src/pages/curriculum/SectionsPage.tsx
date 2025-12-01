@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -11,11 +9,9 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { sectionSchema, type SectionFormValues } from '@/utils/schemas'
-import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
-import { getQuizzesForSection } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Grade, Lesson, Quiz, Section, Unit } from '@/types/models'
+import type { Lesson, Section, Unit } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -142,6 +138,7 @@ export function SectionsPage() {
   }, [selectedGradeId, selectedUnitId, selectedLessonId, cachedAllSections, cacheLoading])
 
   const form = useForm<SectionFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(sectionSchema) as any,
     defaultValues: {
       gradeId: '',
@@ -317,7 +314,10 @@ export function SectionsPage() {
         refreshSections() // Refresh cache
       } else {
         await hierarchicalSectionService.create(values.gradeId, values.unitId, values.lessonId, {
-            title: values.title,
+          gradeId: values.gradeId,
+          unitId: values.unitId,
+          lessonId: values.lessonId,
+          title: values.title,
           isPublished: values.isPublished,
         })
         notifySuccess('Section created successfully')
@@ -380,7 +380,7 @@ export function SectionsPage() {
         <div onClick={(e) => e.stopPropagation()}>
           <Switch 
             checked={row.isPublished ?? false} 
-            onCheckedChange={(checked) => {
+            onCheckedChange={() => {
               handleTogglePublish(row)
             }}
           />
@@ -517,7 +517,7 @@ export function SectionsPage() {
               render={({ field }) => {
                 const selectedGradeId = form.getValues('gradeId')
                 const filteredUnits = selectedGradeId
-                  ? allUnits.filter((unit) => unit.gradeId === selectedGradeId)
+                  ? cachedAllUnits.filter((unit) => unit.gradeId === selectedGradeId)
                   : []
                 const hasUnits = filteredUnits.length > 0
                 

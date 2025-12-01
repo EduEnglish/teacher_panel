@@ -18,7 +18,6 @@ import {
   serverTimestamp,
   onSnapshot,
   query,
-  where,
   orderBy,
   limit,
   getDocs,
@@ -139,7 +138,7 @@ export async function logAdminAction(params: Omit<AdminActionLog, 'id' | 'create
   })
 }
 
-interface CollectionService<T extends { id: string; status: string }> {
+interface CollectionService<T extends { id: string }> {
   create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>, adminId: string, metadata?: Record<string, unknown>): Promise<T>
   update(id: string, data: Partial<Omit<T, 'id' | 'createdAt' | 'updatedAt'>>, adminId: string, metadata?: Record<string, unknown>): Promise<void>
   remove(id: string, adminId: string, metadata?: Record<string, unknown>): Promise<void>
@@ -156,7 +155,7 @@ function createCollectionService<K extends CollectionName>(collectionName: K): C
       const payload = {
         ...data,
         id: docRef.id,
-        status: data.status ?? 'active',
+        ...(('status' in data && data.status) ? { status: data.status } : {}),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }
@@ -466,7 +465,7 @@ export async function fetchStudentPerformance(gradeId?: string): Promise<Student
   ])
 
   const gradeMap = new Map(gradesSnap.docs.map((grade) => [grade.id, (grade.data() as Grade).name]))
-  const studentMap = new Map(studentsSnap.docs.map((student) => [student.id, fromDoc<Student>(student)]))
+  // const studentMap = new Map(studentsSnap.docs.map((student) => [student.id, fromDoc<Student>(student)]))
 
   // Build performance map from practiceData
   // Try multiple ways to link practiceData to users: userId, studentId, or document structure

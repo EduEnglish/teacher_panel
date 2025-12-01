@@ -12,6 +12,7 @@ type FormModalProps = {
   children: ReactNode
   isSubmitting?: boolean
   secondaryAction?: ReactNode
+  hideSubmitButton?: boolean
 }
 
 export function FormModal({
@@ -24,6 +25,7 @@ export function FormModal({
   children,
   isSubmitting,
   secondaryAction,
+  hideSubmitButton = false,
 }: FormModalProps) {
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
@@ -38,9 +40,11 @@ export function FormModal({
             Cancel
           </Button>
           {secondaryAction}
-          <Button onClick={onSubmit} disabled={isSubmitting} type="button">
-            {isSubmitting ? 'Saving…' : submitLabel}
-          </Button>
+          {!hideSubmitButton && (
+            <Button onClick={onSubmit} disabled={isSubmitting} type="button">
+              {isSubmitting ? 'Saving…' : submitLabel}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -22,6 +22,7 @@ import {
   scheduleNotification,
   sendNotification,
 } from '@/services/firebase'
+import { Timestamp } from 'firebase/firestore'
 import type { Notification } from '@/types/models'
 import {
   notificationAudienceOptions,
@@ -51,7 +52,7 @@ const DEFAULT_VALUES: NotificationFormValues = {
 function toDate(value: unknown) {
   if (!value) return undefined
   if (value instanceof Date) return value
-  if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as any).toDate === 'function') {
+  if (typeof value === 'object' && value !== null && 'toDate' in value && typeof (value as { toDate?: () => Date }).toDate === 'function') {
     return (value as { toDate: () => Date }).toDate()
   }
   return undefined
@@ -78,6 +79,7 @@ export function NotificationsPage() {
   const [isSending, setIsSending] = useState(false)
 
   const form = useForm<NotificationFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(notificationSchema) as any,
     defaultValues: DEFAULT_VALUES,
     mode: 'onChange',
@@ -229,7 +231,7 @@ export function NotificationsPage() {
         audienceValue: values.audienceType === 'all' ? '' : values.audienceValue?.trim() ?? '',
         channels: values.channels,
         deliveryStatus: values.deliveryStatus,
-        scheduledAt: values.scheduledAt ?? null,
+        scheduledAt: values.scheduledAt ? Timestamp.fromDate(values.scheduledAt) : null,
         status: values.status ?? 'active',
       }
 

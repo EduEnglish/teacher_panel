@@ -4,9 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -44,7 +42,7 @@ export function GradesPage() {
   }, [grades])
 
   const form = useForm<GradeFormValues>({
-    resolver: zodResolver(gradeSchema) as any,
+    resolver: zodResolver(gradeSchema),
     defaultValues: {
       name: '',
       description: '',

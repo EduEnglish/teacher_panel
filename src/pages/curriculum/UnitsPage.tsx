@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -14,7 +12,7 @@ import { unitSchema, type UnitFormValues } from '@/utils/schemas'
 import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService } from '@/services/hierarchicalServices'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Grade, Unit } from '@/types/models'
+import type { Unit } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -65,6 +63,7 @@ export function UnitsPage() {
   const allLessons = cachedAllLessons
 
   const form = useForm<UnitFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(unitSchema) as any,
     defaultValues: {
       gradeId: '',
@@ -221,6 +220,7 @@ export function UnitsPage() {
         refreshUnits() // Refresh cache
       } else {
         await hierarchicalUnitService.create(values.gradeId, {
+          gradeId: values.gradeId,
           number: values.number,
           isPublished: values.isPublished,
         })
@@ -266,7 +266,7 @@ export function UnitsPage() {
         <div onClick={(e) => e.stopPropagation()}>
           <Switch 
             checked={row.isPublished ?? false} 
-            onCheckedChange={(checked) => {
+            onCheckedChange={() => {
               handleTogglePublish(row)
             }}
           />

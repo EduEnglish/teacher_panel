@@ -16,6 +16,7 @@ export function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<AdminSettingsFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(adminSettingsSchema) as any,
     defaultValues: {
       name: user?.displayName ?? 'EduEnglish Admin',

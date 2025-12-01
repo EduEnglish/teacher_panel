@@ -30,7 +30,7 @@ import {
   type OrderWordsQuestionFormValues,
   type SpellingQuestionFormValues,
 } from '@/utils/schemas'
-import type { Question, Quiz } from '@/types/models'
+import type { Question, Quiz, SpellingQuestion } from '@/types/models'
 import { formatDate } from '@/utils/formatters'
 
 type QuestionBuilderProps = {
@@ -88,7 +88,8 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   }, [quiz.quizType])
 
   const form = useForm<QuestionInput>({
-    resolver: zodResolver(schema as any) as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(schema) as any,
     defaultValues: getDefaultValues(quiz.id, quiz.quizType),
     mode: 'onChange',
   })
@@ -122,10 +123,11 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   const handleSubmit = form.handleSubmit(async (values) => {
     // Ensure question type matches quiz type
     const expectedType = getQuestionTypeFromQuizType(quiz.quizType)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload = {
       ...values,
       type: expectedType, // Force type to match quiz type
-    } as QuestionInput
+    } as any as QuestionInput
     
     if (editingQuestion) {
       await onUpdate(editingQuestion.id, payload)
@@ -630,10 +632,11 @@ function mapQuestionToValues(question: Question): QuestionInput {
 
   if (question.type === 'spelling') {
     // Convert single answer to array if needed (backward compatibility)
+    const questionWithAnswer = question as SpellingQuestion & { answer?: string }
     const answers = Array.isArray(question.answers)
       ? question.answers
-      : (question as any).answer
-        ? [(question as any).answer]
+      : questionWithAnswer.answer
+        ? [questionWithAnswer.answer]
         : ['']
     return {
       ...question,
@@ -690,12 +693,13 @@ export function renderQuestionPreview(question: Question) {
           </div>
         </div>
       )
-    case 'spelling':
+    case 'spelling': {
       // Handle both array format and single answer (backward compatibility)
+      const questionWithAnswer = question as SpellingQuestion & { answer?: string }
       const spellingAnswers = Array.isArray(question.answers)
         ? question.answers
-        : (question as any).answer
-          ? [(question as any).answer]
+        : questionWithAnswer.answer
+          ? [questionWithAnswer.answer]
           : []
       return (
         <div className="space-y-2">
@@ -709,7 +713,8 @@ export function renderQuestionPreview(question: Question) {
           </div>
         </div>
       )
-    case 'matching':
+    }
+    case 'matching': {
       // Handle both array format (teacher panel) and object format (student app/Firestore)
       const pairsArray = Array.isArray(question.pairs)
         ? question.pairs
@@ -730,6 +735,7 @@ export function renderQuestionPreview(question: Question) {
           ))}
         </div>
       )
+    }
     case 'order-words':
       return (
         <div className="flex flex-wrap gap-2">

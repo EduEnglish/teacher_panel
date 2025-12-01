@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-const lessonTypes = ['Grammar', 'Vocabulary', 'Reading', 'Listening'] as const
+// const lessonTypes = ['Grammar', 'Vocabulary', 'Reading', 'Listening'] as const
 const quizTypes = ['fill-in', 'spelling', 'matching', 'order-words'] as const
 const notificationAudienceTypes = ['all', 'grade', 'unit', 'lesson', 'custom'] as const
 const notificationChannels = ['in-app', 'email', 'push'] as const
@@ -28,7 +28,7 @@ export const lessonSchema = z.object({
   gradeId: z.string().min(1, 'Grade is required'),
   unitId: z.string().min(1, 'Unit is required'),
   title: z.enum(lessonTitleOptions, {
-    errorMap: () => ({ message: 'Please select a lesson title' }),
+    message: 'Please select a lesson title',
   }),
   order: z.number().min(1, 'Order must be greater than zero'),
   isPublished: z.boolean().default(false),

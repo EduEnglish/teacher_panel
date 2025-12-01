@@ -12,7 +12,7 @@ import type {
   Quiz,
   SpellingQuestion,
 } from '@/types/models'
-import { mapToStudentQuizType } from './quizTypeMapper'
+import { mapToStudentQuizType, type StudentQuizType } from './quizTypeMapper'
 
 /**
  * Student App Question Format (exact match from quizzes.json)
@@ -62,10 +62,11 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
  */
 function transformSpellingQuestion(question: SpellingQuestion): StudentAppQuestion {
   // Handle both array format and single answer (backward compatibility)
+  const questionWithAnswer = question as SpellingQuestion & { answer?: string }
   const answers = Array.isArray(question.answers)
     ? question.answers.map((a) => a.trim()).filter(Boolean)
-    : (question as any).answer
-      ? [(question as any).answer.trim()]
+    : questionWithAnswer.answer
+      ? [questionWithAnswer.answer.trim()]
       : []
   
   return {
@@ -137,8 +138,11 @@ export function transformQuestion(question: Question): StudentAppQuestion {
       return transformMatchingQuestion(question)
     case 'order-words':
       return transformOrderWordsQuestion(question)
-    default:
-      throw new Error(`Unknown question type: ${(question as any).type}`)
+    default: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const questionType = (question as any).type
+      throw new Error(`Unknown question type: ${questionType}`)
+    }
   }
 }
 
@@ -204,6 +208,7 @@ export function prepareQuizDocumentForFirestore(
     totalPoints: studentFormat.totalPoints,
     questions: studentFormat.questions.map((q) => {
       // Build question object exactly as in quizzes.json
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const questionObj: any = {
         id: q.id,
         prompt: q.prompt,

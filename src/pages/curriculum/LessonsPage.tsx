@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -12,10 +10,9 @@ import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { lessonSchema, type LessonFormValues } from '@/utils/schemas'
 import { lessonTitleOptions } from '@/utils/constants'
-import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService, hierarchicalLessonService } from '@/services/hierarchicalServices'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Grade, Lesson, Unit } from '@/types/models'
+import type { Lesson, Unit } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -102,6 +99,7 @@ export function LessonsPage() {
   }, [selectedGradeId, selectedUnitId, cachedAllLessons, cacheLoading])
 
   const form = useForm<LessonFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(lessonSchema) as any,
     defaultValues: {
       gradeId: '',
@@ -149,7 +147,7 @@ export function LessonsPage() {
         id: editingLesson.id,
         gradeId: editingLesson.gradeId,
         unitId: editingLesson.unitId,
-        title: editingLesson.title,
+        title: editingLesson.title as LessonFormValues['title'],
         order: editingLesson.order,
         isPublished: editingLesson.isPublished ?? false,
       })
@@ -298,6 +296,8 @@ export function LessonsPage() {
         refreshLessons() // Refresh cache
       } else {
         await hierarchicalLessonService.create(values.gradeId, values.unitId, {
+          gradeId: values.gradeId,
+          unitId: values.unitId,
           title: values.title,
           order: values.order,
           isPublished: values.isPublished,
@@ -360,7 +360,7 @@ export function LessonsPage() {
         <div onClick={(e) => e.stopPropagation()}>
           <Switch 
             checked={row.isPublished ?? false} 
-            onCheckedChange={(checked) => {
+            onCheckedChange={() => {
               handleTogglePublish(row)
             }}
           />

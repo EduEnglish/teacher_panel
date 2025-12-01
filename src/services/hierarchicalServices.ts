@@ -13,8 +13,6 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  where,
-  orderBy,
   serverTimestamp,
   onSnapshot,
   type QueryConstraint,
@@ -22,7 +20,7 @@ import {
   type DocumentData,
 } from 'firebase/firestore'
 import { firestore } from './firebase'
-import type { Grade, Unit, Lesson, Section } from '@/types/models'
+import type { Unit, Lesson, Section } from '@/types/models'
 
 /**
  * Convert Firestore document to entity

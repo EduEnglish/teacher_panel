@@ -62,7 +62,7 @@ export async function createQuizWithQuestions(
     isPublished: q.isPublished ?? false,
     createdAt: null,
     updatedAt: null,
-  }))
+  } as Question))
 
   // Prepare document in student app format (exact match to quizzes.json)
   const firestoreDoc = prepareQuizDocumentForFirestore(quizWithId, questionsWithIds)
@@ -146,7 +146,7 @@ export async function updateQuizWithQuestions(
     isPublished: q.isPublished ?? false,
     createdAt: null,
     updatedAt: null,
-  }))
+  } as Question))
 
   // Prepare document
   const firestoreDoc = prepareQuizDocumentForFirestore(updatedQuiz, questionsWithIds)
@@ -257,7 +257,9 @@ export async function getQuizWithQuestions(
   } as Quiz
 
   // Extract questions from embedded array and transform from student app format to teacher panel format
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const questions = ((data.questions as any[]) || []).map((q: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const question: any = {
       ...q,
       quizId: quizId,
@@ -301,8 +303,10 @@ export async function getQuizWithQuestions(
     if (q.type === 'spelling') {
       if (q.answers && Array.isArray(q.answers)) {
         question.answers = q.answers
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } else if ((q as any).answer) {
         // Backward compatibility: single answer to array
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         question.answers = [(q as any).answer]
       }
       // Preserve points

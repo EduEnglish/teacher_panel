@@ -1,20 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { QuestionBuilder } from '@/components/forms/QuestionBuilder'
-import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
 import { getQuizzesForSection, getQuizWithQuestions, updateQuizWithQuestions } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Grade, Lesson, Question, Quiz, Section, Unit } from '@/types/models'
+import type { Lesson, Question, Quiz, Section, Unit } from '@/types/models'
+import type { FillInQuestionFormValues, SpellingQuestionFormValues, MatchingQuestionFormValues, OrderWordsQuestionFormValues } from '@/utils/schemas'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -469,7 +465,7 @@ export function QuestionsPage() {
     }
   }
 
-  const handleCreateQuestion = async (values: any) => {
+  const handleCreateQuestion = async (values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues) => {
     if (!user?.uid || !formSelectedQuizId) {
       notifyError('Missing quiz selection', 'Please select a quiz first.')
       return
@@ -550,7 +546,7 @@ export function QuestionsPage() {
     }
   }
 
-  const handleUpdateQuestion = async (id: string, values: any) => {
+  const handleUpdateQuestion = async (id: string, values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues) => {
     if (!user?.uid || !formSelectedQuizId) {
       notifyError('Missing quiz selection', 'Please select a quiz first.')
       return

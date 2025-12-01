@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { where } from 'firebase/firestore'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -13,30 +12,14 @@ import { FormModal } from '@/components/forms/FormModal'
 import { renderQuestionPreview } from '@/components/forms/QuestionBuilder'
 import { quizSchema, type QuizFormValues } from '@/utils/schemas'
 import { quizTypeOptions } from '@/utils/constants'
-import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
 import { createQuizWithQuestions, updateQuizWithQuestions, deleteQuizWithQuestions, getQuizWithQuestions, getQuizzesForSection } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Grade, Lesson, Question, Quiz, Section, Unit } from '@/types/models'
+import type { Lesson, Question, Quiz, Section, Unit } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
-// Helper function to map quiz type to question type
-function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type'] {
-  switch (quizType) {
-    case 'fill-in':
-      return 'fill-in'
-    case 'spelling':
-      return 'spelling'
-    case 'matching':
-      return 'matching'
-    case 'order-words':
-      return 'order-words'
-    default:
-      return 'fill-in'
-  }
-}
 
 type QuizTableRow = Quiz & {
   gradeName: string
@@ -226,7 +209,7 @@ export function QuizzesPage() {
     const counts: Record<string, number> = {}
     quizzes.forEach((quiz) => {
       // Questions are embedded in quiz document
-      const embeddedQuestions = (quiz as any).questions || []
+      const embeddedQuestions = ('questions' in quiz && Array.isArray(quiz.questions)) ? quiz.questions : []
       counts[quiz.id] = embeddedQuestions.length
     })
     setQuestionCounts(counts)
@@ -234,6 +217,7 @@ export function QuizzesPage() {
 
 
   const form = useForm<QuizFormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(quizSchema) as any,
     defaultValues: {
       gradeId: '',
@@ -470,185 +454,11 @@ export function QuizzesPage() {
       if (result) {
         setPreviewQuestions(result.questions)
       }
-    } catch (error) {
+    } catch {
       setPreviewQuestions([])
     }
   }
 
-  const handleCreateQuestion = async (values: any) => {
-    if (!user?.uid || !selectedQuiz) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
-      notifyError('Invalid quiz', 'Quiz missing required IDs')
-      return
-    }
-
-    // Ensure question type matches quiz type
-    const questionType = getQuestionTypeFromQuizType(selectedQuiz.quizType)
-    if (values.type && values.type !== questionType) {
-      notifyError('Type mismatch', `Question type must match quiz type (${selectedQuiz.quizType})`)
-      return
-    }
-
-    try {
-      setIsSavingQuestion(true)
-      // Add new question to existing questions array
-      const newQuestion: Omit<Question, 'id' | 'createdAt' | 'updatedAt' | 'quizId'> = {
-        ...values,
-        type: questionType, // Force type to match quiz type
-        order: values.order ?? questions.length + 1,
-      }
-
-      const updatedQuestions = [...questions, newQuestion as Question]
-
-      // Update quiz with new questions array
-      await updateQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-        {}, // No quiz updates
-        updatedQuestions.map((q) => ({
-          ...q,
-          quizId: undefined, // Remove quizId for update
-        })),
-        user.uid,
-      )
-
-      // Reload questions
-      const result = await getQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-      )
-      if (result) {
-        setQuestions(result.questions)
-      }
-
-      notifySuccess('Question added')
-      setRefreshTrigger((prev) => prev + 1)
-    } catch (error) {
-      notifyError('Unable to add question', error instanceof Error ? error.message : undefined)
-    } finally {
-      setIsSavingQuestion(false)
-    }
-  }
-
-  const handleUpdateQuestion = async (id: string, values: any) => {
-    if (!user?.uid || !selectedQuiz) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
-      notifyError('Invalid quiz', 'Quiz missing required IDs')
-      return
-    }
-
-    // Ensure question type matches quiz type
-    const questionType = getQuestionTypeFromQuizType(selectedQuiz.quizType)
-    if (values.type && values.type !== questionType) {
-      notifyError('Type mismatch', `Question type must match quiz type (${selectedQuiz.quizType})`)
-      return
-    }
-
-    try {
-      setIsSavingQuestion(true)
-      // Update question in array, ensuring type matches quiz type
-      const updatedQuestions = questions.map((q) => (q.id === id ? { ...q, ...values, type: questionType } : q))
-
-      // Update quiz with modified questions array
-      await updateQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-        {}, // No quiz updates
-        updatedQuestions.map((q) => ({
-          ...q,
-          quizId: undefined, // Remove quizId for update
-        })),
-        user.uid,
-      )
-
-      // Reload questions
-      const result = await getQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-      )
-      if (result) {
-        setQuestions(result.questions)
-      }
-
-      notifySuccess('Question updated')
-      setRefreshTrigger((prev) => prev + 1)
-    } catch (error) {
-      notifyError('Unable to update question', error instanceof Error ? error.message : undefined)
-    } finally {
-      setIsSavingQuestion(false)
-    }
-  }
-
-  const handleDeleteQuestion = async (question: Question) => {
-    const confirmed = await confirmAction({
-      title: 'Delete question?',
-      description: 'This question will be removed from the quiz.',
-      confirmLabel: 'Delete',
-    })
-    if (!confirmed) return
-    if (!user?.uid || !selectedQuiz) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!selectedQuiz.gradeId || !selectedQuiz.unitId || !selectedQuiz.lessonId || !selectedQuiz.sectionId) {
-      notifyError('Invalid quiz', 'Quiz missing required IDs')
-      return
-    }
-
-    try {
-      // Remove question from array
-      const updatedQuestions = questions.filter((q) => q.id !== question.id)
-
-      // Update quiz with modified questions array
-      await updateQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-        {}, // No quiz updates
-        updatedQuestions.map((q) => ({
-          ...q,
-          quizId: undefined, // Remove quizId for update
-        })),
-        user.uid,
-      )
-
-      // Reload questions
-      const result = await getQuizWithQuestions(
-        selectedQuiz.gradeId,
-        selectedQuiz.unitId,
-        selectedQuiz.lessonId,
-        selectedQuiz.sectionId,
-        selectedQuiz.id,
-      )
-      if (result) {
-        setQuestions(result.questions)
-      }
-
-      notifySuccess('Question deleted')
-    } catch (error) {
-      notifyError('Unable to delete question', error instanceof Error ? error.message : undefined)
-    }
-  }
 
   const gradeMap = useMemo(() => new Map(grades.map((grade) => [grade.id, grade.name])), [grades])
   const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, `Unit ${unit.number}`])), [units])
@@ -671,7 +481,8 @@ export function QuizzesPage() {
   const rows: QuizTableRow[] = quizzes
     .map((quiz) => {
       // Handle both 'quizType' and 'type' fields (Firestore uses 'type' for student app format)
-      const quizType = (quiz as any).quizType || (quiz as any).type || 'fill-in'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const quizType = ((quiz as any).quizType || (quiz as any).type || 'fill-in') as Quiz['quizType']
       return {
       ...quiz,
         quizType: quizType, // Ensure quizType is always set
@@ -742,7 +553,7 @@ export function QuizzesPage() {
         <div onClick={(e) => e.stopPropagation()}>
           <Switch 
             checked={row.isPublished ?? false} 
-            onCheckedChange={(checked) => {
+            onCheckedChange={() => {
               handlePublishToggle(row)
             }}
           />
