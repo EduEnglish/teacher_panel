@@ -31,8 +31,8 @@ export interface StudentAppQuestion {
 
 /**
  * Transform Fill-in question to student app format
- * Teacher: { sentence, blanks: [{id, answer}] }
- * Student: { answers: ["word1", "word2"] }
+ * Teacher: { prompt (with blanks), blanks: [{id, answer}] }
+ * Student: { prompt: prompt (with blanks), answers: ["word1", "word2"] }
  */
 function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
   // Extract answers from blanks array - in order
@@ -42,9 +42,12 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
   // If teacher panel has options, include them
   const options = question.options || []
 
+  // Use prompt directly (backward compatibility: use sentence if prompt is empty)
+  const studentPrompt = question.prompt?.trim() || (question as any).sentence?.trim() || ''
+
   return {
     id: question.id,
-    prompt: question.prompt,
+    prompt: studentPrompt,
     type: 'fill_blank',
     options: options.length > 0 ? options : undefined,
     answers: answers,

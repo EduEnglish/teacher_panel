@@ -75,6 +75,7 @@ export async function createQuizWithQuestions(
   firestoreDoc.gradeId = quiz.gradeId
   firestoreDoc.unitId = quiz.unitId
   firestoreDoc.lessonId = quiz.lessonId
+  firestoreDoc.quizType = quiz.quizType // Preserve teacher panel quiz type
   firestoreDoc.isPublished = quiz.isPublished
 
   // Write to Firestore
@@ -156,6 +157,7 @@ export async function updateQuizWithQuestions(
   firestoreDoc.gradeId = gradeId
   firestoreDoc.unitId = unitId
   firestoreDoc.lessonId = lessonId
+  firestoreDoc.quizType = updatedQuiz.quizType // Preserve teacher panel quiz type
   firestoreDoc.isPublished = updatedQuiz.isPublished
 
   // Update in Firestore

@@ -77,7 +77,7 @@ export interface QuestionBase extends BaseEntity {
 export interface FillInQuestion extends QuestionBase {
   type: 'fill-in'
   blanks: Array<{ id: string; answer: string }>
-  sentence: string
+  sentence?: string // Optional for backward compatibility, use prompt instead
   options?: string[] // Optional multiple choice options
 }
 

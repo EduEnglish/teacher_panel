@@ -39,7 +39,7 @@ export const sectionSchema = z.object({
   gradeId: z.string().min(1, 'Grade is required'),
   unitId: z.string().min(1, 'Unit is required'),
   lessonId: z.string().min(1, 'Lesson is required'),
-  title: z.string().min(2, 'Section title must be at least 2 characters').max(25, 'Section title must be at most 25 characters'),
+  title: z.string().min(2, 'Section title must be at least 2 characters'),
   isPublished: z.boolean().default(false),
 })
 
@@ -57,8 +57,7 @@ export const quizSchema = z.object({
 export const fillInQuestionSchema = z.object({
   id: z.string().optional(),
   quizId: z.string().min(1, 'Quiz is required'),
-  prompt: z.string().min(5, 'Prompt must be descriptive'),
-  sentence: z.string().min(5, 'Sentence is required'),
+  prompt: z.string().min(5, 'Prompt must be descriptive. Enter the question with blanks using ___'),
   blanks: z
     .array(
       z.object({

@@ -33,6 +33,112 @@ function fromDoc<T>(snapshot: DocumentSnapshot<DocumentData>): T {
 }
 
 /**
+ * Recursively delete all quizzes under a section
+ */
+async function deleteAllQuizzes(
+  gradeId: string,
+  unitId: string,
+  lessonId: string,
+  sectionId: string,
+): Promise<void> {
+  const quizzesRef = collection(
+    firestore,
+    'grades',
+    gradeId,
+    'units',
+    unitId,
+    'lessons',
+    lessonId,
+    'sections',
+    sectionId,
+    'quizzes',
+  )
+  const snapshot = await getDocs(quizzesRef)
+  const deletePromises = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref))
+  await Promise.all(deletePromises)
+}
+
+/**
+ * Recursively delete all sections and their quizzes under a lesson
+ */
+async function deleteAllSections(
+  gradeId: string,
+  unitId: string,
+  lessonId: string,
+): Promise<void> {
+  const sectionsRef = collection(
+    firestore,
+    'grades',
+    gradeId,
+    'units',
+    unitId,
+    'lessons',
+    lessonId,
+    'sections',
+  )
+  const snapshot = await getDocs(sectionsRef)
+  
+  // Delete all quizzes for each section, then delete the section
+  const deletePromises = snapshot.docs.map(async (sectionDoc) => {
+    const sectionId = sectionDoc.id
+    // Delete all quizzes under this section
+    await deleteAllQuizzes(gradeId, unitId, lessonId, sectionId)
+    // Delete the section itself
+    await deleteDoc(sectionDoc.ref)
+  })
+  
+  await Promise.all(deletePromises)
+}
+
+/**
+ * Recursively delete all lessons, sections, and quizzes under a unit
+ */
+async function deleteAllLessons(
+  gradeId: string,
+  unitId: string,
+): Promise<void> {
+  const lessonsRef = collection(
+    firestore,
+    'grades',
+    gradeId,
+    'units',
+    unitId,
+    'lessons',
+  )
+  const snapshot = await getDocs(lessonsRef)
+  
+  // Delete all sections and quizzes for each lesson, then delete the lesson
+  const deletePromises = snapshot.docs.map(async (lessonDoc) => {
+    const lessonId = lessonDoc.id
+    // Delete all sections and their quizzes under this lesson
+    await deleteAllSections(gradeId, unitId, lessonId)
+    // Delete the lesson itself
+    await deleteDoc(lessonDoc.ref)
+  })
+  
+  await Promise.all(deletePromises)
+}
+
+/**
+ * Recursively delete all units, lessons, sections, and quizzes under a grade
+ */
+export async function deleteAllUnits(gradeId: string): Promise<void> {
+  const unitsRef = collection(firestore, 'grades', gradeId, 'units')
+  const snapshot = await getDocs(unitsRef)
+  
+  // Delete all lessons, sections, and quizzes for each unit, then delete the unit
+  const deletePromises = snapshot.docs.map(async (unitDoc) => {
+    const unitId = unitDoc.id
+    // Delete all lessons, sections, and quizzes under this unit
+    await deleteAllLessons(gradeId, unitId)
+    // Delete the unit itself
+    await deleteDoc(unitDoc.ref)
+  })
+  
+  await Promise.all(deletePromises)
+}
+
+/**
  * Hierarchical Unit Service
  * Units as subcollections of grades: grades/{gradeId}/units/{unitId}
  */
@@ -74,9 +180,12 @@ export const hierarchicalUnitService = {
   },
 
   /**
-   * Delete unit
+   * Delete unit and all its child data (lessons, sections, quizzes)
    */
   async remove(gradeId: string, unitId: string): Promise<void> {
+    // Delete all lessons, sections, and quizzes under this unit first
+    await deleteAllLessons(gradeId, unitId)
+    // Delete the unit itself
     const docRef = doc(firestore, 'grades', gradeId, 'units', unitId)
     await deleteDoc(docRef)
   },
@@ -157,6 +266,9 @@ export const hierarchicalLessonService = {
   },
 
   async remove(gradeId: string, unitId: string, lessonId: string): Promise<void> {
+    // Delete all sections and quizzes under this lesson first
+    await deleteAllSections(gradeId, unitId, lessonId)
+    // Delete the lesson itself
     const docRef = doc(firestore, 'grades', gradeId, 'units', unitId, 'lessons', lessonId)
     await deleteDoc(docRef)
   },
@@ -260,6 +372,9 @@ export const hierarchicalSectionService = {
     lessonId: string,
     sectionId: string,
   ): Promise<void> {
+    // Delete all quizzes under this section first
+    await deleteAllQuizzes(gradeId, unitId, lessonId, sectionId)
+    // Delete the section itself
     const docRef = doc(
       firestore,
       'grades',

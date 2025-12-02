@@ -116,7 +116,14 @@ export function CurriculumCacheProvider({ children }: { children: ReactNode }) {
           getQuizzesForSection(section.gradeId, section.unitId, section.lessonId, section.id).catch(() => []),
         )
         const quizArrays = await Promise.all(quizPromises)
-        setAllQuizzes(quizArrays.flat())
+        const allQuizzesFlat = quizArrays.flat()
+        
+        // Remove duplicates by quiz ID (in case same quiz appears in multiple sections)
+        const uniqueQuizzes = Array.from(
+          new Map(allQuizzesFlat.map((quiz) => [quiz.id, quiz])).values()
+        )
+        
+        setAllQuizzes(uniqueQuizzes)
       } catch (error) {
         console.error('Failed to load quizzes:', error)
         setAllQuizzes([])

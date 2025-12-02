@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
@@ -328,77 +327,6 @@ export function QuestionsPage() {
     setIsModalOpen(true)
   }
 
-  const handleTogglePublish = async (question: Question) => {
-    if (!user?.uid) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-
-    const quiz = quizMap.get(question.quizId)
-    if (!quiz) {
-      notifyError('Quiz not found', 'The quiz for this question could not be found.')
-      return
-    }
-
-    // Optimistic update
-    const newPublishedState = !question.isPublished
-    setQuestions((prevQuestions) =>
-      prevQuestions.map((q) => (q.id === question.id ? { ...q, isPublished: newPublishedState } : q)),
-    )
-
-    try {
-      // Get current quiz with questions
-      const result = await getQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id)
-      if (!result) {
-        notifyError('Quiz not found', 'Unable to load quiz')
-        return
-      }
-
-      // Update the question in the questions array
-      const updatedQuestions = result.questions.map((q) =>
-        q.id === question.id ? { ...q, isPublished: newPublishedState } : q,
-      )
-
-      // Update quiz with modified questions
-      await updateQuizWithQuestions(
-        quiz.gradeId,
-        quiz.unitId,
-        quiz.lessonId,
-        quiz.sectionId,
-        quiz.id,
-        {}, // No quiz updates
-        updatedQuestions.map((q) => ({
-          ...q,
-          quizId: undefined, // Remove quizId for update
-        })),
-        user.uid,
-      )
-
-      notifySuccess(newPublishedState ? 'Question published' : 'Question unpublished')
-      refreshQuizzes() // Refresh cache
-      
-      // Reload questions to reflect changes
-      const loadAllQuestions = async () => {
-        const questionPromises = cachedAllQuizzes.map(async (q) => {
-          try {
-            const res = await getQuizWithQuestions(q.gradeId, q.unitId, q.lessonId, q.sectionId, q.id)
-            return res?.questions || []
-          } catch {
-            return []
-          }
-        })
-        const questionArrays = await Promise.all(questionPromises)
-        setQuestions(questionArrays.flat())
-      }
-      loadAllQuestions()
-    } catch (error) {
-      // Revert on error
-      setQuestions((prevQuestions) =>
-        prevQuestions.map((q) => (q.id === question.id ? { ...q, isPublished: question.isPublished } : q)),
-      )
-      notifyError('Unable to update question status', error instanceof Error ? error.message : undefined)
-    }
-  }
 
   const handleDelete = async (question: Question) => {
     const confirmed = await confirmAction({
@@ -693,16 +621,6 @@ export function QuestionsPage() {
       render: (row) => (
         <div className="truncate max-w-[150px]" title={row.gradeName}>
           {row.gradeName}
-        </div>
-      ),
-    },
-    {
-      key: 'isPublished',
-      header: 'Published',
-      align: 'center',
-      render: (row) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Switch checked={row.isPublished ?? false} onCheckedChange={() => handleTogglePublish(row)} />
         </div>
       ),
     },

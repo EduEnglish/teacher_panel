@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
-import { renderQuestionPreview } from '@/components/forms/QuestionBuilder'
+import { renderQuestionPreview } from '@/utils/questionPreview'
 import { quizSchema, type QuizFormValues } from '@/utils/schemas'
 import { quizTypeOptions } from '@/utils/constants'
 import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
@@ -164,7 +164,7 @@ export function QuizzesPage() {
       // If 'all' is selected, filter cached quizzes
       setIsLoading(cacheLoading)
       
-      // Filter cached quizzes based on selected filters
+      // Filter cached quizzes based on selected filters and remove duplicates by ID
       let filteredQuizzes = cachedAllQuizzes
       
       if (selectedGradeId !== 'all') {
@@ -183,7 +183,12 @@ export function QuizzesPage() {
         filteredQuizzes = filteredQuizzes.filter((quiz) => quiz.sectionId === selectedSectionId)
       }
       
-      setQuizzes(filteredQuizzes)
+      // Remove duplicates by quiz ID (in case cache has duplicates)
+      const uniqueQuizzes = Array.from(
+        new Map(filteredQuizzes.map((quiz) => [quiz.id, quiz])).values()
+      )
+      
+      setQuizzes(uniqueQuizzes)
       setIsLoading(false)
       return
     }
@@ -191,14 +196,18 @@ export function QuizzesPage() {
     setIsLoading(true)
     getQuizzesForSection(selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId)
       .then((data) => {
-        setQuizzes(data)
+        // Remove duplicates by quiz ID (safety check)
+        const uniqueQuizzes = Array.from(
+          new Map(data.map((quiz) => [quiz.id, quiz])).values()
+        )
+        setQuizzes(uniqueQuizzes)
         setIsLoading(false)
       })
       .catch((error) => {
         notifyError('Unable to load quizzes', error instanceof Error ? error.message : undefined)
         setIsLoading(false)
       })
-  }, [selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId, cachedAllSections, cacheLoading, notifyError])
+  }, [selectedGradeId, selectedUnitId, selectedLessonId, selectedSectionId, cachedAllQuizzes, cacheLoading, notifyError])
 
   useEffect(() => {
     setPageTitle('Quiz Management')

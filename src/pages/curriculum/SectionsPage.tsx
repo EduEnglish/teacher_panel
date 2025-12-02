@@ -610,9 +610,9 @@ export function SectionsPage() {
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Section Title (max 25 characters)</FormLabel>
+                  <FormLabel>Section Title</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g., Vocabulary Drill" maxLength={25} {...field} />
+                    <Input placeholder="e.g., Vocabulary Drill" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

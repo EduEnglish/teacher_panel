@@ -1,23 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  DndContext,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { nanoid } from 'nanoid/non-secure'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import {
@@ -32,6 +20,7 @@ import {
 } from '@/utils/schemas'
 import type { Question, Quiz, SpellingQuestion } from '@/types/models'
 import { formatDate } from '@/utils/formatters'
+import { renderQuestionPreview } from '@/utils/questionPreview'
 
 type QuestionBuilderProps = {
   quiz: Quiz
@@ -48,30 +37,10 @@ type QuestionInput =
   | MatchingQuestionFormValues
   | OrderWordsQuestionFormValues
 
-type SortableWordProps = {
-  id: string
-  text: string
-}
-
-function SortableWord({ id, text }: SortableWordProps) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id })
-  const style = { transform: CSS.Transform.toString(transform), transition }
-  return (
-    <button
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      className="rounded-full border border-dashed border-primary/40 bg-primary/5 px-4 py-1 text-sm font-medium text-primary shadow-inner"
-      type="button"
-    >
-      {text}
-    </button>
-  )
-}
 
 export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving }: QuestionBuilderProps) {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
+  const [orderWordsSentence, setOrderWordsSentence] = useState<string>('')
 
   const schema = useMemo(() => {
     switch (quiz.quizType) {
@@ -114,20 +83,26 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     name: 'pairs' as never,
   })
 
-  const sensors = useSensors(useSensor(PointerSensor), useSensor(TouchSensor))
 
   useEffect(() => {
-    form.reset(editingQuestion ? mapQuestionToValues(editingQuestion) : getDefaultValues(quiz.id, quiz.quizType))
+    const values = editingQuestion ? mapQuestionToValues(editingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
+    form.reset(values)
+    // Update local sentence state for order words
+    if (quiz.quizType === 'order-words') {
+      const correctOrder = (values as OrderWordsQuestionFormValues).correctOrder ?? []
+      setOrderWordsSentence(correctOrder.join(' '))
+    } else {
+      setOrderWordsSentence('')
+    }
   }, [editingQuestion, quiz.id, quiz.quizType, form])
 
   const handleSubmit = form.handleSubmit(async (values) => {
     // Ensure question type matches quiz type
     const expectedType = getQuestionTypeFromQuizType(quiz.quizType)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const payload = {
       ...values,
       type: expectedType, // Force type to match quiz type
-    } as any as QuestionInput
+    } as QuestionInput
     
     if (editingQuestion) {
       await onUpdate(editingQuestion.id, payload)
@@ -159,26 +134,11 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
     form.reset(getDefaultValues(quiz.id, quiz.quizType))
   }
 
-  const handleWordDragEnd = (event: DragEndEvent) => {
-    if (!event.over) return
-    const words = (form.getValues('words') ?? []) as string[]
-    if (!words.length) return
-    const { id: activeId } = event.active
-    const { id: overId } = event.over
-    if (activeId === overId) return
-    const oldIndex = words.findIndex((word) => word === activeId)
-    const newIndex = words.findIndex((word) => word === overId)
-    const reordered = arrayMove(words, oldIndex, newIndex)
-    form.setValue('words', reordered)
-    form.setValue('correctOrder', reordered)
-  }
 
   const isFillIn = quiz.quizType === 'fill-in'
   const isSpelling = quiz.quizType === 'spelling'
   const isMatching = quiz.quizType === 'matching'
   const isOrderWords = quiz.quizType === 'order-words'
-
-  const watchedWords = (form.watch('words') ?? []) as string[]
 
   return (
     <Card className="border-none shadow-sm">
@@ -201,29 +161,26 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
               name="prompt"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Question Prompt</FormLabel>
+                  <FormLabel>{isFillIn ? 'Question with blanks' : 'Question Prompt'}</FormLabel>
                   <FormControl>
-                    <Textarea placeholder="Describe the question context..." rows={3} {...field} />
+                    <Textarea 
+                      placeholder={isFillIn ? "Enter the question replacing blanks with ___ (e.g., The cat sat on the ___)" : "Describe the question context..."} 
+                      rows={isFillIn ? 2 : 3} 
+                      {...field} 
+                    />
                   </FormControl>
                   <FormMessage />
+                  {isFillIn && (
+                    <p className="text-xs text-muted-foreground">
+                      Enter the complete question with blanks marked using ___ (underscores).
+                    </p>
+                  )}
                 </FormItem>
               )}
             />
 
             {isFillIn && (
               <>
-                <FormField
-                  name="sentence"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Sentence with blanks</FormLabel>
-                      <FormControl>
-                        <Textarea placeholder="Enter the sentence replacing blanks with ___" rows={2} {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <FormLabel>Accepted Answers</FormLabel>
@@ -419,42 +376,54 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
             {isOrderWords && (
               <div className="space-y-3">
                 <FormField
-                  name="words"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Word Bank</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Type words separated by commas"
-                          value={(field.value ?? []).join(', ')}
-                          onChange={(event) => {
-                            const words = event.target.value
-                              .split(',')
-                              .map((word) => word.trim())
-                              .filter(Boolean)
-                            field.onChange(words)
-                            form.setValue('correctOrder', words)
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  name="correctOrder"
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel>Correct Answer</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Enter the complete sentence in the correct order (e.g., The cat sat on the mat)"
+                            rows={3}
+                            value={orderWordsSentence}
+                            onChange={(event) => {
+                              const sentence = event.target.value
+                              // Update local state immediately to allow free typing with spaces
+                              setOrderWordsSentence(sentence)
+                              
+                              // Split sentence into words for form storage
+                              const words = sentence.trim()
+                                ? sentence
+                                    .trim()
+                                    .split(/\s+/)
+                                    .filter((word) => word.length > 0)
+                                : []
+                              
+                              // Update form fields
+                              field.onChange(words)
+                              form.setValue('words', words)
+                            }}
+                            onBlur={() => {
+                              // Ensure form is synced on blur
+                              const words = orderWordsSentence.trim()
+                                ? orderWordsSentence
+                                    .trim()
+                                    .split(/\s+/)
+                                    .filter((word) => word.length > 0)
+                                : []
+                              field.onChange(words)
+                              form.setValue('words', words)
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-xs text-muted-foreground">
+                          Enter the complete sentence that students should form by arranging the words.
+                        </p>
+                      </FormItem>
+                    )
+                  }}
                 />
-                <FormLabel>Drag to define the correct order</FormLabel>
-                {watchedWords.length ? (
-                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWordDragEnd}>
-                    <SortableContext items={watchedWords} strategy={verticalListSortingStrategy}>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {watchedWords.map((word) => (
-                          <SortableWord key={word} id={word} text={word} />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Enter words above to build the draggable tiles.</p>
-                )}
               </div>
             )}
 
@@ -487,21 +456,6 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                       value={field.value ?? questions.length + 1}
                       onChange={(event) => field.onChange(Number(event.target.value))}
                     />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              name="isPublished"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Publish to Mobile App</FormLabel>
-                    <p className="text-xs text-muted-foreground">Only published questions appear to students.</p>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
                   </FormControl>
                 </FormItem>
               )}
@@ -568,7 +522,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
       return {
         quizId,
         prompt: '',
-        sentence: '',
         blanks: [{ id: nanoid(), answer: '' }],
         options: [],
         type: 'fill-in',
@@ -607,7 +560,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
       return {
         quizId,
         prompt: '',
-        words: [],
+        words: [], // Keep for schema validation, will be synced with correctOrder
         correctOrder: [],
         type: 'order-words',
         order: 1,
@@ -622,6 +575,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
   if (question.type === 'fill-in') {
     return {
       ...question,
+      prompt: question.prompt || question.sentence || '', // Support both prompt and sentence for backward compatibility
       blanks: question.blanks.length ? question.blanks : [{ id: nanoid(), answer: '' }],
       options: question.options || [],
       points: question.points ?? 1,
@@ -663,10 +617,12 @@ function mapQuestionToValues(question: Question): QuestionInput {
   }
 
   if (question.type === 'order-words') {
+    // Use correctOrder as primary, fallback to words for backward compatibility
+    const correctOrder = question.correctOrder ?? question.words ?? []
     return {
       ...question,
-      words: question.words ?? question.correctOrder,
-      correctOrder: question.correctOrder ?? question.words,
+      words: correctOrder, // Sync words with correctOrder for schema validation
+      correctOrder: correctOrder,
       points: question.points ?? 1,
       isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
@@ -674,81 +630,6 @@ function mapQuestionToValues(question: Question): QuestionInput {
   }
 
   return question as QuestionInput
-}
-
-export function renderQuestionPreview(question: Question) {
-  switch (question.type) {
-    case 'fill-in':
-      return (
-        <div className="space-y-2">
-          <p className="font-medium text-foreground">Sentence</p>
-          <p>{question.sentence}</p>
-          <p className="font-medium text-foreground">Answers</p>
-          <div className="flex flex-wrap gap-2">
-            {question.blanks.map((blank) => (
-              <Badge key={blank.id} variant="secondary">
-                {blank.answer}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )
-    case 'spelling': {
-      // Handle both array format and single answer (backward compatibility)
-      const questionWithAnswer = question as SpellingQuestion & { answer?: string }
-      const spellingAnswers = Array.isArray(question.answers)
-        ? question.answers
-        : questionWithAnswer.answer
-          ? [questionWithAnswer.answer]
-          : []
-      return (
-        <div className="space-y-2">
-          <p className="font-medium text-foreground">Correct Answers:</p>
-          <div className="flex flex-wrap gap-2">
-            {spellingAnswers.map((answer, index) => (
-              <Badge key={index} variant="secondary">
-                {answer}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )
-    }
-    case 'matching': {
-      // Handle both array format (teacher panel) and object format (student app/Firestore)
-      const pairsArray = Array.isArray(question.pairs)
-        ? question.pairs
-        : question.pairs && typeof question.pairs === 'object'
-          ? Object.entries(question.pairs).map(([left, right]) => ({
-              id: left,
-              left,
-              right: right as string,
-            }))
-          : []
-      return (
-        <div className="grid gap-2">
-          {pairsArray.map((pair) => (
-            <div key={pair.id || pair.left} className="grid grid-cols-2 gap-3 rounded-lg border border-border p-2">
-              <span>{pair.left}</span>
-              <span className="font-semibold text-foreground">{pair.right}</span>
-            </div>
-          ))}
-        </div>
-      )
-    }
-    case 'order-words':
-      return (
-        <div className="flex flex-wrap gap-2">
-          {question.correctOrder.map((word, index) => (
-            <Badge key={`${word}-${index}`} variant="secondary">
-              {word}
-            </Badge>
-          ))}
-        </div>
-      )
-    default:
-      return null
-  }
 }
 
 function formatQuizTypeLabel(quizType: Quiz['quizType']) {

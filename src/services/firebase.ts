@@ -185,6 +185,13 @@ function createCollectionService<K extends CollectionName>(collectionName: K): C
     },
     async remove(id, adminId, metadata) {
       const docRef = doc(db, collectionName, id)
+      
+      // If deleting a grade, also delete all child data (units, lessons, sections, quizzes)
+      if (collectionName === 'grades') {
+        const { deleteAllUnits } = await import('./hierarchicalServices')
+        await deleteAllUnits(id)
+      }
+      
       await deleteDoc(docRef)
       await logAdminAction({
         adminId,
