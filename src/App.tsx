@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
+import { CurriculumPage } from '@/pages/curriculum/CurriculumPage'
 import { GradesPage } from '@/pages/curriculum/GradesPage'
 import { UnitsPage } from '@/pages/curriculum/UnitsPage'
 import { LessonsPage } from '@/pages/curriculum/LessonsPage'
@@ -30,13 +31,13 @@ function App() {
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/curriculum">
-                  <Route index element={<Navigate to="/curriculum/grades" replace />} />
+                  <Route index element={<CurriculumPage />} />
                   <Route path="grades" element={<GradesPage />} />
-                  <Route path="units" element={<UnitsPage />} />
-                  <Route path="lessons" element={<LessonsPage />} />
-                  <Route path="sections" element={<SectionsPage />} />
-                  <Route path="quizzes/*" element={<QuizzesPage />} />
-                  <Route path="questions" element={<QuestionsPage />} />
+                  <Route path=":gradeId/units" element={<UnitsPage />} />
+                  <Route path=":gradeId/:unitId/lessons" element={<LessonsPage />} />
+                  <Route path=":gradeId/:unitId/:lessonId/sections" element={<SectionsPage />} />
+                  <Route path=":gradeId/:unitId/:lessonId/:sectionId/quizzes/*" element={<QuizzesPage />} />
+                  <Route path=":gradeId/:unitId/:lessonId/:sectionId/:quizId/questions" element={<QuestionsPage />} />
                 </Route>
                 <Route path="/students" element={<StudentsPage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />

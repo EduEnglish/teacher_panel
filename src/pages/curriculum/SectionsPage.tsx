@@ -1,133 +1,71 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
+import { PageLoader } from '@/components/feedback/PageLoader'
 import { sectionSchema, type SectionFormValues } from '@/utils/schemas'
-import { hierarchicalUnitService, hierarchicalLessonService, hierarchicalSectionService } from '@/services/hierarchicalServices'
+import { hierarchicalSectionService } from '@/services/hierarchicalServices'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Lesson, Section, Unit } from '@/types/models'
+import type { Section } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
 type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string; quizCount: number }
 
 export function SectionsPage() {
+  const { gradeId, unitId, lessonId } = useParams<{ gradeId: string; unitId: string; lessonId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { setPageTitle, notifyError, notifySuccess, confirmAction } = useUI()
-  const [selectedGradeId, setSelectedGradeId] = useState<string | 'all'>('all')
-  const [selectedUnitId, setSelectedUnitId] = useState<string | 'all'>('all')
-  const [selectedLessonId, setSelectedLessonId] = useState<string | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSection, setEditingSection] = useState<Section | null>(null)
 
   const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshSections } = useCurriculumCache()
   
-  // Auto-select first grade if only one exists
-  useEffect(() => {
-    if (grades.length === 1 && selectedGradeId === 'all') {
-      setSelectedGradeId(grades[0].id)
-    }
-  }, [grades, selectedGradeId])
+  // Get the current grade, unit, and lesson
+  const currentGrade = grades.find((g) => g.id === gradeId)
+  const currentUnit = cachedAllUnits.find((u) => u.id === unitId && u.gradeId === gradeId)
+  const currentLesson = cachedAllLessons.find((l) => l.id === lessonId && l.gradeId === gradeId && l.unitId === unitId)
   
-  const [units, setUnits] = useState<Unit[]>([])
-  const [lessons, setLessons] = useState<Lesson[]>([])
   const [sections, setSections] = useState<Section[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Load units for selected grade (for table filtering)
+  // Redirect if params are missing
   useEffect(() => {
-    if (selectedGradeId === 'all' || !selectedGradeId) {
-      // If 'all', use cached units
-      setUnits(cachedAllUnits)
+    if (!gradeId) {
+      navigate('/curriculum/grades')
       return
     }
-
-    const unsubscribe = hierarchicalUnitService.listen(selectedGradeId, (data) => {
-      setUnits(data)
-    })
-
-    return unsubscribe
-  }, [selectedGradeId, cachedAllUnits])
-
-  // Auto-select first unit if only one exists for selected grade
-  useEffect(() => {
-    if (selectedGradeId !== 'all' && units.length === 1 && selectedUnitId === 'all') {
-      setSelectedUnitId(units[0].id)
-    }
-  }, [selectedGradeId, units, selectedUnitId])
-
-  // Load lessons for selected unit (for table filtering)
-  useEffect(() => {
-    if (selectedGradeId === 'all' || !selectedGradeId || selectedUnitId === 'all' || !selectedUnitId) {
-      // If 'all' is selected, filter cached lessons
-      if (selectedGradeId === 'all') {
-        setLessons(cachedAllLessons)
-      } else if (selectedUnitId === 'all') {
-        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId))
-      } else {
-        setLessons(cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId))
-      }
+    if (!unitId) {
+      navigate(`/curriculum/${gradeId}/units`)
       return
     }
-
-    const unsubscribe = hierarchicalLessonService.listen(selectedGradeId, selectedUnitId, (data) => {
-      setLessons(data)
-    })
-
-    return unsubscribe
-  }, [selectedGradeId, selectedUnitId, cachedAllLessons])
-
-  // Auto-select first lesson if only one exists for selected unit
-  useEffect(() => {
-    if (selectedUnitId !== 'all' && lessons.length === 1 && selectedLessonId === 'all') {
-      setSelectedLessonId(lessons[0].id)
+    if (!lessonId) {
+      navigate(`/curriculum/${gradeId}/${unitId}/lessons`)
+      return
     }
-  }, [selectedUnitId, lessons, selectedLessonId])
+  }, [gradeId, unitId, lessonId, navigate])
 
-  // Load sections for selected lesson
+  // Load sections for the lesson from URL (hierarchical)
   useEffect(() => {
-    if (
-      selectedGradeId === 'all' ||
-      !selectedGradeId ||
-      selectedUnitId === 'all' ||
-      !selectedUnitId ||
-      selectedLessonId === 'all' ||
-      !selectedLessonId
-    ) {
-      // If 'all' is selected, filter cached sections
-      setIsLoading(cacheLoading)
-      
-      // Filter cached sections based on selected filters
-      let filteredSections = cachedAllSections
-      
-      if (selectedGradeId !== 'all') {
-        filteredSections = filteredSections.filter((section) => section.gradeId === selectedGradeId)
-      }
-      
-      if (selectedUnitId !== 'all') {
-        filteredSections = filteredSections.filter((section) => section.unitId === selectedUnitId)
-      }
-      
-      if (selectedLessonId !== 'all') {
-        filteredSections = filteredSections.filter((section) => section.lessonId === selectedLessonId)
-      }
-      
-      setSections(filteredSections)
+    if (!gradeId || !unitId || !lessonId) {
       setIsLoading(false)
+      setSections([])
       return
     }
 
     setIsLoading(true)
     const unsubscribe = hierarchicalSectionService.listen(
-      selectedGradeId,
-      selectedUnitId,
-      selectedLessonId,
+      gradeId,
+      unitId,
+      lessonId,
       (data) => {
         setSections(data)
         setIsLoading(false)
@@ -135,7 +73,7 @@ export function SectionsPage() {
     )
 
     return unsubscribe
-  }, [selectedGradeId, selectedUnitId, selectedLessonId, cachedAllSections, cacheLoading])
+  }, [gradeId, unitId, lessonId])
 
   const form = useForm<SectionFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,7 +88,7 @@ export function SectionsPage() {
   })
 
   useEffect(() => {
-    setPageTitle('Section Management')
+    setPageTitle('Sections')
   }, [setPageTitle])
 
   useEffect(() => {
@@ -165,19 +103,19 @@ export function SectionsPage() {
       })
     } else {
       form.reset({
-        gradeId: selectedGradeId === 'all' ? '' : selectedGradeId,
-        unitId: selectedUnitId === 'all' ? '' : selectedUnitId,
-        lessonId: selectedLessonId === 'all' ? '' : selectedLessonId,
+        gradeId: gradeId || '',
+        unitId: unitId || '',
+        lessonId: lessonId || '',
         title: '',
         isPublished: false,
       })
     }
-  }, [editingSection, selectedGradeId, selectedUnitId, selectedLessonId, form])
+  }, [editingSection, gradeId, unitId, lessonId, form])
 
   const rows = useMemo<SectionTableRow[]>(() => {
     const gradeMap = new Map(grades.map((grade) => [grade.id, grade.name]))
-    const unitMap = new Map(units.map((unit) => [unit.id, `Unit ${unit.number}`]))
-    const lessonMap = new Map(lessons.map((lesson) => [lesson.id, lesson.title]))
+    const unitMap = new Map(cachedAllUnits.map((unit) => [unit.id, `Unit ${unit.number}`]))
+    const lessonMap = new Map(cachedAllLessons.map((lesson) => [lesson.id, lesson.title]))
     const quizzesPerSection = cachedAllQuizzes.reduce<Record<string, number>>((acc, quiz) => {
       const key = `${quiz.gradeId}_${quiz.unitId}_${quiz.lessonId}_${quiz.sectionId}`
       acc[key] = (acc[key] ?? 0) + 1
@@ -191,20 +129,8 @@ export function SectionsPage() {
         lessonTitle: lessonMap.get(section.lessonId) ?? '—',
         quizCount: quizzesPerSection[`${section.gradeId}_${section.unitId}_${section.lessonId}_${section.id}`] ?? 0,
       }))
-      .sort((a, b) => {
-        // First sort by grade name
-        const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
-        if (gradeCompare !== 0) return gradeCompare
-        // Then sort by unit title
-        const unitCompare = (a.unitTitle || '').localeCompare(b.unitTitle || '')
-        if (unitCompare !== 0) return unitCompare
-        // Then sort by lesson title
-        const lessonCompare = (a.lessonTitle || '').localeCompare(b.lessonTitle || '')
-        if (lessonCompare !== 0) return lessonCompare
-        // Finally sort by section title
-        return a.title.localeCompare(b.title)
-      })
-  }, [sections, grades, units, lessons, cachedAllQuizzes])
+      .sort((a, b) => a.title.localeCompare(b.title))
+  }, [sections, grades, cachedAllUnits, cachedAllLessons, cachedAllQuizzes])
 
   const handleOpenNew = () => {
     setEditingSection(null)
@@ -285,9 +211,9 @@ export function SectionsPage() {
       const duplicateSection = sections.find(
         (s) =>
           s.title.toLowerCase().trim() === values.title.toLowerCase().trim() &&
-          s.gradeId === values.gradeId &&
-          s.unitId === values.unitId &&
-          s.lessonId === values.lessonId &&
+          s.gradeId === gradeId &&
+          s.unitId === unitId &&
+          s.lessonId === lessonId &&
           s.id !== editingSection?.id,
       )
       if (duplicateSection) {
@@ -313,10 +239,14 @@ export function SectionsPage() {
         notifySuccess('Section updated successfully')
         refreshSections() // Refresh cache
       } else {
-        await hierarchicalSectionService.create(values.gradeId, values.unitId, values.lessonId, {
-          gradeId: values.gradeId,
-          unitId: values.unitId,
-          lessonId: values.lessonId,
+        if (!gradeId || !unitId || !lessonId) {
+          notifyError('Missing IDs', 'Grade, Unit, and Lesson IDs are required')
+          return
+        }
+        await hierarchicalSectionService.create(gradeId, unitId, lessonId, {
+          gradeId: gradeId,
+          unitId: unitId,
+          lessonId: lessonId,
           title: values.title,
           isPublished: values.isPublished,
         })
@@ -336,33 +266,6 @@ export function SectionsPage() {
       render: (row) => (
         <div className="truncate max-w-[200px]" title={row.title}>
           {row.title}
-        </div>
-      ),
-    },
-    { 
-      key: 'lessonTitle', 
-      header: 'Lesson',
-      render: (row) => (
-        <div className="truncate max-w-[150px]" title={row.lessonTitle}>
-          {row.lessonTitle}
-        </div>
-      ),
-    },
-    { 
-      key: 'unitTitle', 
-      header: 'Unit',
-      render: (row) => (
-        <div className="truncate max-w-[120px]" title={row.unitTitle}>
-          {row.unitTitle}
-        </div>
-      ),
-    },
-    { 
-      key: 'gradeName', 
-      header: 'Grade',
-      render: (row) => (
-        <div className="truncate max-w-[150px]" title={row.gradeName}>
-          {row.gradeName}
         </div>
       ),
     },
@@ -389,77 +292,49 @@ export function SectionsPage() {
     },
   ]
 
-  const filteredUnits = selectedGradeId === 'all' ? units : units.filter((unit) => unit.gradeId === selectedGradeId)
-  const filteredLessons = lessons.filter((lesson) => {
-    const gradeMatch = selectedGradeId === 'all' || lesson.gradeId === selectedGradeId
-    const unitMatch = selectedUnitId === 'all' || lesson.unitId === selectedUnitId
-    return gradeMatch && unitMatch
-  })
+  // Show loader while data is loading
+  if (cacheLoading || isLoading) {
+    return <PageLoader />
+  }
+
+  // Show error only after loading is complete
+  if (!gradeId || !unitId || !lessonId || !currentGrade || !currentUnit || !currentLesson) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Grade, Unit, or Lesson not found</p>
+          <Button asChild variant="link" className="mt-2">
+            <Link to="/curriculum/grades">Back to Grades</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Sections</h2>
+          <h2 className="text-base font-medium text-foreground flex items-center gap-1.5 flex-wrap">
+            <Link to="/curriculum" className="hover:text-primary transition-colors">
+              {currentGrade.name}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <Link to={`/curriculum/${gradeId}/units`} className="hover:text-primary transition-colors">
+              Unit {currentUnit.number}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <Link to={`/curriculum/${gradeId}/${unitId}/lessons`} className="hover:text-primary transition-colors">
+              {currentLesson.title}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">Sections</span>
+          </h2>
           <p className="text-sm text-muted-foreground">Sections organize quiz experiences within each lesson.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select
-            value={selectedGradeId}
-            onValueChange={(value: string) => {
-              setSelectedGradeId(value as typeof selectedGradeId)
-              setSelectedUnitId('all')
-              setSelectedLessonId('all')
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by grade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All grades</SelectItem>
-              {grades.map((grade) => (
-                <SelectItem key={grade.id} value={grade.id}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={selectedUnitId}
-            onValueChange={(value: string) => {
-              setSelectedUnitId(value as typeof selectedUnitId)
-              setSelectedLessonId('all')
-            }}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by unit" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All units</SelectItem>
-              {filteredUnits.map((unit) => (
-                <SelectItem key={unit.id} value={unit.id}>
-                  Unit {unit.number}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedLessonId} onValueChange={(value: string) => setSelectedLessonId(value as typeof selectedLessonId)}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filter by lesson" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All lessons</SelectItem>
-              {filteredLessons.map((lesson) => (
-                <SelectItem key={lesson.id} value={lesson.id}>
-                  {lesson.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleOpenNew} className="rounded-full px-6">
-            Add Section
-          </Button>
-        </div>
+        <Button onClick={handleOpenNew} className="rounded-full px-6">
+          Add Section
+        </Button>
       </div>
 
       <DataTable
@@ -469,6 +344,7 @@ export function SectionsPage() {
         emptyMessage="No sections yet. Create a section to add quizzes for this lesson."
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onRowClick={(section) => navigate(`/curriculum/${gradeId}/${unitId}/${lessonId}/${section.id}/quizzes`)}
       />
 
       <FormModal
@@ -482,130 +358,6 @@ export function SectionsPage() {
       >
         <Form {...form}>
           <form className="space-y-4">
-            <FormField
-              name="gradeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Grade</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value: string) => {
-                      field.onChange(value)
-                      form.setValue('unitId', '')
-                      form.setValue('lessonId', '')
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {grades.map((grade) => (
-                        <SelectItem key={grade.id} value={grade.id}>
-                          {grade.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="unitId"
-              render={({ field }) => {
-                const selectedGradeId = form.getValues('gradeId')
-                const filteredUnits = selectedGradeId
-                  ? cachedAllUnits.filter((unit) => unit.gradeId === selectedGradeId)
-                  : []
-                const hasUnits = filteredUnits.length > 0
-                
-                return (
-                <FormItem>
-                  <FormLabel>Unit</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value: string) => {
-                      field.onChange(value)
-                      form.setValue('lessonId', '')
-                    }}
-                      disabled={!selectedGradeId || !hasUnits}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                          <SelectValue placeholder={!selectedGradeId ? "Select grade first" : "Select unit"} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        {!selectedGradeId ? (
-                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                            Please select a grade first.
-                          </div>
-                        ) : !hasUnits ? (
-                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                            No units available for this grade. Please create a unit first.
-                          </div>
-                        ) : (
-                          filteredUnits.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id}>
-                              Unit {unit.number}
-                          </SelectItem>
-                          ))
-                        )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-                )
-              }}
-            />
-            <FormField
-              name="lessonId"
-              render={({ field }) => {
-                const selectedGradeId = form.getValues('gradeId')
-                const selectedUnitId = form.getValues('unitId')
-                const filteredLessons = selectedGradeId && selectedUnitId
-                  ? cachedAllLessons.filter((lesson) => lesson.gradeId === selectedGradeId && lesson.unitId === selectedUnitId)
-                  : []
-                const hasLessons = filteredLessons.length > 0
-                
-                return (
-                <FormItem>
-                  <FormLabel>Lesson</FormLabel>
-                    <Select 
-                      value={field.value} 
-                      onValueChange={field.onChange}
-                      disabled={!selectedGradeId || !selectedUnitId || !hasLessons}
-                    >
-                    <FormControl>
-                      <SelectTrigger>
-                          <SelectValue placeholder={!selectedUnitId ? "Select unit first" : "Select lesson"} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                        {!selectedUnitId ? (
-                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                            Please select a unit first.
-                          </div>
-                        ) : !hasLessons ? (
-                          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                            No lessons available for this unit. Please create a lesson first.
-                          </div>
-                        ) : (
-                          filteredLessons.map((lesson) => (
-                          <SelectItem key={lesson.id} value={lesson.id}>
-                            {lesson.title}
-                          </SelectItem>
-                          ))
-                        )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-                )
-              }}
-            />
             <FormField
               name="title"
               render={({ field }) => (

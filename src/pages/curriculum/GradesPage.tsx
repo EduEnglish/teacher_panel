@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '@/context/AuthContext'
@@ -17,6 +18,7 @@ import { useCollection } from '@/hooks/useCollection'
 type GradeTableRow = Grade & { unitCount: number }
 
 export function GradesPage() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { setPageTitle, notifyError, notifySuccess, confirmAction } = useUI()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -200,6 +202,7 @@ export function GradesPage() {
         emptyMessage="No grades configured yet. Start by adding your first grade level."
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onRowClick={(grade) => navigate(`/curriculum/${grade.id}/units`)}
       />
 
       <FormModal

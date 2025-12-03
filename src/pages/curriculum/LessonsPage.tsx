@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
@@ -8,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
+import { PageLoader } from '@/components/feedback/PageLoader'
 import { lessonSchema, type LessonFormValues } from '@/utils/schemas'
 import { lessonTitleOptions } from '@/utils/constants'
 import { hierarchicalUnitService, hierarchicalLessonService } from '@/services/hierarchicalServices'
@@ -19,76 +22,44 @@ import { useUI } from '@/context/UIContext'
 type LessonTableRow = Lesson & { gradeName: string; unitTitle: string; sectionCount: number }
 
 export function LessonsPage() {
+  const { gradeId, unitId } = useParams<{ gradeId: string; unitId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { setPageTitle, notifyError, notifySuccess, confirmAction } = useUI()
-  const [selectedGradeId, setSelectedGradeId] = useState<string | 'all'>('all')
-  const [selectedUnitId, setSelectedUnitId] = useState<string | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null)
 
   const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, isLoading: cacheLoading, refreshLessons } = useCurriculumCache()
   
-  // Auto-select first grade and unit if only one exists
-  useEffect(() => {
-    if (grades.length === 1 && selectedGradeId === 'all') {
-      setSelectedGradeId(grades[0].id)
-    }
-  }, [grades, selectedGradeId])
+  // Get the current grade and unit
+  const currentGrade = grades.find((g) => g.id === gradeId)
+  const currentUnit = cachedAllUnits.find((u) => u.id === unitId && u.gradeId === gradeId)
   
-  const [units, setUnits] = useState<Unit[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Load units for selected grade (hierarchical) - for table filtering
+  // Redirect if gradeId or unitId is missing
   useEffect(() => {
-    if (selectedGradeId === 'all' || !selectedGradeId) {
-      // If 'all', use cached units
-      setUnits(cachedAllUnits)
+    if (!gradeId) {
+      navigate('/curriculum/grades')
       return
     }
-
-    const unsubscribe = hierarchicalUnitService.listen(selectedGradeId, (data) => {
-      setUnits(data)
-    })
-
-    return unsubscribe
-  }, [selectedGradeId, cachedAllUnits])
-
-
-  // Use cached sections from context
-  const allSections = cachedAllSections
-
-  // Auto-select first unit if only one exists for selected grade
-  useEffect(() => {
-    if (selectedGradeId !== 'all' && units.length === 1 && selectedUnitId === 'all') {
-      setSelectedUnitId(units[0].id)
+    if (!unitId) {
+      navigate(`/curriculum/${gradeId}/units`)
+      return
     }
-  }, [selectedGradeId, units, selectedUnitId])
+  }, [gradeId, unitId, navigate])
 
-  // Load lessons for selected unit (hierarchical)
+  // Load lessons for the unit from URL (hierarchical)
   useEffect(() => {
-    if (selectedGradeId === 'all' || !selectedGradeId || selectedUnitId === 'all' || !selectedUnitId) {
-      // If 'all' is selected, filter cached lessons
-      setIsLoading(cacheLoading)
-      
-      // Filter cached lessons based on selected filters
-      let filteredLessons = cachedAllLessons
-      
-      if (selectedGradeId !== 'all') {
-        filteredLessons = filteredLessons.filter((lesson) => lesson.gradeId === selectedGradeId)
-      }
-      
-      if (selectedUnitId !== 'all') {
-        filteredLessons = filteredLessons.filter((lesson) => lesson.unitId === selectedUnitId)
-      }
-      
-      setLessons(filteredLessons)
+    if (!gradeId || !unitId) {
       setIsLoading(false)
+      setLessons([])
       return
     }
 
     setIsLoading(true)
-    const unsubscribe = hierarchicalLessonService.listen(selectedGradeId, selectedUnitId, (data) => {
+    const unsubscribe = hierarchicalLessonService.listen(gradeId, unitId, (data) => {
       // Ensure all lessons have required fields
       const validLessons = data.filter((lesson) => lesson.gradeId && lesson.unitId)
       setLessons(validLessons)
@@ -96,7 +67,10 @@ export function LessonsPage() {
     })
 
     return unsubscribe
-  }, [selectedGradeId, selectedUnitId, cachedAllLessons, cacheLoading])
+  }, [gradeId, unitId])
+
+  // Use cached sections from context
+  const allSections = cachedAllSections
 
   const form = useForm<LessonFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,15 +84,13 @@ export function LessonsPage() {
     },
   })
 
-  // Auto-calculate order when grade/unit/title changes for new lessons
+  // Auto-calculate order when title changes for new lessons
   useEffect(() => {
-    if (editingLesson) return // Don't auto-calculate for editing
+    if (editingLesson || !gradeId || !unitId) return // Don't auto-calculate for editing or if missing params
 
-    const gradeId = form.getValues('gradeId')
-    const unitId = form.getValues('unitId')
     const title = form.getValues('title')
 
-    if (gradeId && unitId && title) {
+    if (title) {
       // Get existing lessons for this unit to calculate next order
       hierarchicalLessonService
         .getAll(gradeId, unitId)
@@ -135,10 +107,10 @@ export function LessonsPage() {
     } else {
       form.setValue('order', 1)
     }
-  }, [form.watch('gradeId'), form.watch('unitId'), form.watch('title'), editingLesson])
+  }, [form.watch('title'), editingLesson, gradeId, unitId])
 
   useEffect(() => {
-    setPageTitle('Lesson Management')
+    setPageTitle('Lessons')
   }, [setPageTitle])
 
   useEffect(() => {
@@ -153,18 +125,18 @@ export function LessonsPage() {
       })
     } else {
       form.reset({
-        gradeId: selectedGradeId === 'all' ? '' : selectedGradeId,
-        unitId: selectedUnitId === 'all' ? '' : selectedUnitId,
+        gradeId: gradeId || '',
+        unitId: unitId || '',
         title: 'Grammar',
-        order: 1, // Will be auto-calculated when grade/unit is selected
+        order: 1, // Will be auto-calculated when title is selected
         isPublished: false,
       })
     }
-  }, [editingLesson, selectedGradeId, selectedUnitId, form])
+  }, [editingLesson, gradeId, unitId, form])
 
   const rows = useMemo<LessonTableRow[]>(() => {
     const gradeMap = new Map(grades.map((grade) => [grade.id, grade.name]))
-    const unitMap = new Map(units.map((unit) => [unit.id, `Unit ${unit.number}`]))
+    const unitMap = new Map(cachedAllUnits.map((unit) => [unit.id, `Unit ${unit.number}`]))
     const sectionCounts = allSections.reduce<Record<string, number>>((acc, section) => {
       acc[section.lessonId] = (acc[section.lessonId] ?? 0) + 1
       return acc
@@ -177,17 +149,8 @@ export function LessonsPage() {
         unitTitle: unitMap.get(lesson.unitId) ?? '—',
         sectionCount: sectionCounts[lesson.id] ?? 0,
       }))
-      .sort((a, b) => {
-        // First sort by grade name
-        const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
-        if (gradeCompare !== 0) return gradeCompare
-        // Then sort by unit title
-        const unitCompare = (a.unitTitle || '').localeCompare(b.unitTitle || '')
-        if (unitCompare !== 0) return unitCompare
-        // Finally sort by order within the same unit
-        return a.order - b.order
-      })
-  }, [lessons, grades, units, allSections])
+      .sort((a, b) => a.order - b.order)
+  }, [lessons, grades, cachedAllUnits, allSections])
 
   const handleOpenNew = () => {
     setEditingLesson(null)
@@ -268,8 +231,8 @@ export function LessonsPage() {
       const duplicateLesson = lessons.find(
         (l) =>
           l.title.toLowerCase().trim() === values.title.toLowerCase().trim() &&
-          l.gradeId === values.gradeId &&
-          l.unitId === values.unitId &&
+          l.gradeId === gradeId &&
+          l.unitId === unitId &&
           l.id !== editingLesson?.id,
       )
       if (duplicateLesson) {
@@ -304,13 +267,6 @@ export function LessonsPage() {
         })
         notifySuccess('Lesson created successfully')
         refreshLessons() // Refresh cache
-        // Ensure the grade and unit are selected to show the new lesson
-        if (selectedGradeId !== values.gradeId) {
-          setSelectedGradeId(values.gradeId)
-        }
-        if (selectedUnitId !== values.unitId) {
-          setSelectedUnitId(values.unitId)
-        }
       }
       setIsModalOpen(false)
     } catch (error) {
@@ -325,24 +281,6 @@ export function LessonsPage() {
       render: (row) => (
         <div className="truncate max-w-[200px]" title={row.title}>
           {row.title}
-        </div>
-      ),
-    },
-    { 
-      key: 'unitTitle', 
-      header: 'Unit',
-      render: (row) => (
-        <div className="truncate max-w-[120px]" title={row.unitTitle}>
-          {row.unitTitle}
-        </div>
-      ),
-    },
-    { 
-      key: 'gradeName', 
-      header: 'Grade',
-      render: (row) => (
-        <div className="truncate max-w-[150px]" title={row.gradeName}>
-          {row.gradeName}
         </div>
       ),
     },
@@ -369,61 +307,55 @@ export function LessonsPage() {
     },
   ]
 
-  const filteredUnits = selectedGradeId === 'all' ? units : units.filter((unit) => unit.gradeId === selectedGradeId)
+  // Show loader while data is loading
+  if (cacheLoading || isLoading) {
+    return <PageLoader />
+  }
+
+  // Show error only after loading is complete
+  if (!gradeId || !unitId || !currentGrade || !currentUnit) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Grade or Unit not found</p>
+          <Button asChild variant="link" className="mt-2">
+            <Link to="/curriculum/grades">Back to Grades</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Lessons</h2>
+          <h2 className="text-base font-medium text-foreground flex items-center gap-1.5 flex-wrap">
+            <Link to="/curriculum" className="hover:text-primary transition-colors">
+              {currentGrade.name}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <Link to={`/curriculum/${gradeId}/units`} className="hover:text-primary transition-colors">
+              Unit {currentUnit.number}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">Lessons</span>
+          </h2>
           <p className="text-sm text-muted-foreground">Curate lesson experiences aligned with the unit narrative.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select
-            value={selectedGradeId}
-            onValueChange={(value: string) => {
-              setSelectedGradeId(value as typeof selectedGradeId)
-              setSelectedUnitId('all')
-            }}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filter by grade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All grades</SelectItem>
-              {grades.map((grade) => (
-                <SelectItem key={grade.id} value={grade.id}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedUnitId} onValueChange={(value: string) => setSelectedUnitId(value as typeof selectedUnitId)}>
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="Filter by unit" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All units</SelectItem>
-                      {filteredUnits.map((unit) => (
-                        <SelectItem key={unit.id} value={unit.id}>
-                          Unit {unit.number}
-                        </SelectItem>
-                      ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleOpenNew} className="rounded-full px-6">
-            Add Lesson
-          </Button>
-        </div>
+        <Button onClick={handleOpenNew} className="rounded-full px-6">
+          Add Lesson
+        </Button>
       </div>
 
-  <DataTable
+      <DataTable
         data={rows}
         columns={columns}
         isLoading={isLoading}
         emptyMessage="No lessons yet. Add lessons to build out this unit."
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onRowClick={(lesson) => navigate(`/curriculum/${gradeId}/${unitId}/${lesson.id}/sections`)}
       />
 
       <FormModal
@@ -437,98 +369,6 @@ export function LessonsPage() {
       >
         <Form {...form}>
           <form className="space-y-4">
-            <FormField
-              name="gradeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Grade</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value)
-                      form.setValue('unitId', '')
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {grades.length === 0 ? (
-                        <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                          No grades available. Please create a grade first.
-                        </div>
-                      ) : (
-                        grades.map((grade) => (
-                          <SelectItem key={grade.id} value={grade.id}>
-                            {grade.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="unitId"
-              render={({ field }) => {
-                const selectedGradeId = form.getValues('gradeId')
-                const hasUnits = selectedGradeId
-                  ? cachedAllUnits.filter((unit) => unit.gradeId === selectedGradeId).length > 0
-                  : false
-                
-                return (
-                  <FormItem>
-                    <FormLabel>Unit</FormLabel>
-                    <Select 
-                      value={field.value} 
-                      onValueChange={field.onChange}
-                      disabled={!selectedGradeId || !hasUnits}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={!selectedGradeId ? "Select grade first" : "Select unit"} />
-                        </SelectTrigger>
-                      </FormControl>
-                    <SelectContent>
-                      {(() => {
-                        const selectedGradeId = form.getValues('gradeId')
-                        const filteredUnits = selectedGradeId
-                          ? cachedAllUnits.filter((unit) => unit.gradeId === selectedGradeId)
-                          : []
-                        
-                        if (!selectedGradeId) {
-                          return (
-                            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                              Please select a grade first.
-                            </div>
-                          )
-                        }
-                        
-                        if (filteredUnits.length === 0) {
-                          return (
-                            <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                              No units available for this grade. Please create a unit first.
-                            </div>
-                          )
-                        }
-                        
-                        return filteredUnits.map((unit) => (
-                          <SelectItem key={unit.id} value={unit.id}>
-                            Unit {unit.number}
-                          </SelectItem>
-                        ))
-                      })()}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-                )
-              }}
-            />
             <FormField
               name="title"
               render={({ field }) => (

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import {
   fillInQuestionSchema,
@@ -19,8 +19,6 @@ import {
   type SpellingQuestionFormValues,
 } from '@/utils/schemas'
 import type { Question, Quiz, SpellingQuestion } from '@/types/models'
-import { formatDate } from '@/utils/formatters'
-import { renderQuestionPreview } from '@/utils/questionPreview'
 
 type QuestionBuilderProps = {
   quiz: Quiz
@@ -29,6 +27,7 @@ type QuestionBuilderProps = {
   onUpdate: (id: string, values: QuestionInput) => Promise<void>
   onDelete: (question: Question) => Promise<void>
   isSaving: boolean
+  editingQuestion?: Question | null
 }
 
 type QuestionInput =
@@ -38,9 +37,14 @@ type QuestionInput =
   | OrderWordsQuestionFormValues
 
 
-export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving }: QuestionBuilderProps) {
+export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving, editingQuestion: externalEditingQuestion }: QuestionBuilderProps) {
+  // onDelete is kept for interface compatibility but not used since questions list was removed
+  void onDelete
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
   const [orderWordsSentence, setOrderWordsSentence] = useState<string>('')
+  
+  // Use external editingQuestion if provided, otherwise use internal state
+  const currentEditingQuestion = externalEditingQuestion !== undefined ? externalEditingQuestion : editingQuestion
 
   const schema = useMemo(() => {
     switch (quiz.quizType) {
@@ -85,16 +89,21 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
 
 
   useEffect(() => {
-    const values = editingQuestion ? mapQuestionToValues(editingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
+    const values = currentEditingQuestion ? mapQuestionToValues(currentEditingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
     form.reset(values)
-    // Update local sentence state for order words
-    if (quiz.quizType === 'order-words') {
+  }, [currentEditingQuestion, quiz.id, quiz.quizType, form])
+
+  // Separate effect to update orderWordsSentence state for order-words questions
+  useEffect(() => {
+    if (quiz.quizType === 'order-words' && currentEditingQuestion) {
+      const values = mapQuestionToValues(currentEditingQuestion)
       const correctOrder = (values as OrderWordsQuestionFormValues).correctOrder ?? []
-      setOrderWordsSentence(correctOrder.join(' '))
-    } else {
+      const sentence = Array.isArray(correctOrder) && correctOrder.length > 0 ? correctOrder.join(' ') : ''
+      setOrderWordsSentence(sentence)
+    } else if (quiz.quizType === 'order-words' && !currentEditingQuestion) {
       setOrderWordsSentence('')
     }
-  }, [editingQuestion, quiz.id, quiz.quizType, form])
+  }, [currentEditingQuestion, quiz.quizType])
 
   const handleSubmit = form.handleSubmit(async (values) => {
     // Ensure question type matches quiz type
@@ -104,8 +113,8 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
       type: expectedType, // Force type to match quiz type
     } as QuestionInput
     
-    if (editingQuestion) {
-      await onUpdate(editingQuestion.id, payload)
+    if (currentEditingQuestion) {
+      await onUpdate(currentEditingQuestion.id, payload)
     } else {
       await onCreate(payload)
     }
@@ -129,11 +138,6 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
   }
 }
 
-  const handleCancelEdit = () => {
-    setEditingQuestion(null)
-    form.reset(getDefaultValues(quiz.id, quiz.quizType))
-  }
-
 
   const isFillIn = quiz.quizType === 'fill-in'
   const isSpelling = quiz.quizType === 'spelling'
@@ -145,10 +149,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div>
           <CardTitle className="text-xl font-semibold">Question Builder</CardTitle>
-          <CardDescription>
-            Designing <span className="font-medium text-primary">{formatQuizTypeLabel(quiz.quizType)}</span> experiences
-            for this quiz.
-          </CardDescription>
+          
         </div>
         <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
           {questions.length} Question{questions.length === 1 ? '' : 's'}
@@ -157,30 +158,27 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
       <CardContent className="space-y-6">
         <Form {...form}>
           <form className="space-y-5" onSubmit={handleSubmit}>
-            <FormField
-              name="prompt"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{isFillIn ? 'Question with blanks' : 'Question Prompt'}</FormLabel>
-                  <FormControl>
-                    <Textarea 
-                      placeholder={isFillIn ? "Enter the question replacing blanks with ___ (e.g., The cat sat on the ___)" : "Describe the question context..."} 
-                      rows={isFillIn ? 2 : 3} 
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormMessage />
-                  {isFillIn && (
-                    <p className="text-xs text-muted-foreground">
-                      Enter the complete question with blanks marked using ___ (underscores).
-                    </p>
-                  )}
-                </FormItem>
-              )}
-            />
+            <div className="space-y-3">
+              <FormField
+                name="prompt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{isFillIn ? 'Question with blanks' : 'Question Prompt'}</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder={isFillIn ? "e.g., The cat sat on the ___" : "Describe the question context..."} 
+                        rows={isFillIn ? 2 : 3} 
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             {isFillIn && (
-              <>
+              <div className="space-y-5 border-t border-border pt-5">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <FormLabel>Accepted Answers</FormLabel>
@@ -190,7 +188,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                       size="sm"
                       onClick={() => blanksFieldArray.append({ id: nanoid(), answer: '' } as never)}
                     >
-                      Add Blank
+                      Add more answers
                     </Button>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -223,7 +221,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                     ))}
                   </div>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3 border-t border-border pt-4">
                   <div className="flex items-center justify-between">
                     <FormLabel>Multiple Choice Options (Optional)</FormLabel>
                     <Button
@@ -232,12 +230,10 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                       size="sm"
                       onClick={() => optionsFieldArray.append('')}
                     >
-                      Add Option
+                      Add more options
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Add multiple choice options. If provided, students will see these options to choose from.
-                  </p>
+                 
                   <div className="grid gap-3 sm:grid-cols-2">
                     {optionsFieldArray.fields.map((fieldItem, index) => (
                       <FormField
@@ -273,11 +269,11 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                     </p>
                   )}
                 </div>
-              </>
+              </div>
             )}
 
             {isSpelling && (
-              <div className="space-y-3">
+              <div className="space-y-3 border-t border-border pt-5">
                 <div className="flex items-center justify-between">
                   <FormLabel>Correct Answers</FormLabel>
                   <Button
@@ -325,7 +321,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
             )}
 
             {isMatching && (
-              <div className="space-y-3">
+              <div className="space-y-3 border-t border-border pt-5">
                 <div className="flex items-center justify-between">
                   <FormLabel>Matching Pairs</FormLabel>
                   <Button
@@ -374,7 +370,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
             )}
 
             {isOrderWords && (
-              <div className="space-y-3">
+              <div className="space-y-3 border-t border-border pt-5">
                 <FormField
                   name="correctOrder"
                   render={({ field }) => {
@@ -427,90 +423,50 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
               </div>
             )}
 
-            <FormField
-              name="points"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Points</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={field.value ?? 1}
-                      onChange={(event) => field.onChange(Number(event.target.value))}
-                      placeholder="1"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="order"
-              render={({ field }) => (
-                <FormItem className="hidden">
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={field.value ?? questions.length + 1}
-                      onChange={(event) => field.onChange(Number(event.target.value))}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+            <div className="space-y-4 border-t border-border pt-5">
+              <FormField
+                name="points"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Points</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={field.value ?? 1}
+                        onChange={(event) => field.onChange(Number(event.target.value))}
+                        placeholder="1"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                name="order"
+                render={({ field }) => (
+                  <FormItem className="hidden">
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={field.value ?? (currentEditingQuestion?.order ?? questions.length + 1)}
+                        onChange={(event) => field.onChange(Number(event.target.value))}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            </div>
 
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              {editingQuestion && (
-                <Button variant="ghost" type="button" onClick={handleCancelEdit}>
-                  Cancel
-                </Button>
-              )}
+            <div className="flex flex-col-reverse gap-2 border-t border-border pt-5 sm:flex-row sm:justify-end">
+            
               <Button type="submit" disabled={isSaving} className="sm:min-w-[180px]">
-                {isSaving ? 'Saving…' : editingQuestion ? 'Update Question' : 'Add Question'}
+                {isSaving ? 'Saving…' : currentEditingQuestion ? 'Update Question' : 'Add Question'}
               </Button>
             </div>
           </form>
         </Form>
-
-        <div className="space-y-3">
-          <h4 className="text-sm font-semibold uppercase text-muted-foreground">Questions</h4>
-          {questions.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-              No questions yet. Add your first activity to build this quiz.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {questions
-                .slice()
-                .sort((a, b) => a.order - b.order)
-                .map((question, index) => (
-                  <Card key={question.id} className="border border-border/50">
-                    <CardHeader className="flex flex-row items-start justify-between space-y-0">
-                      <div className="space-y-1">
-                        <CardTitle className="text-base font-semibold">
-                          {index + 1}. {question.prompt}
-                        </CardTitle>
-                        <CardDescription>Order {question.order ?? index + 1} · Created {formatDate(question.createdAt)}</CardDescription>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => setEditingQuestion(question)}>
-                          Edit
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => onDelete(question)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm text-muted-foreground">
-                      {renderQuestionPreview(question)}
-                    </CardContent>
-                  </Card>
-                ))}
-            </div>
-          )}
-        </div>
       </CardContent>
     </Card>
   )
@@ -579,6 +535,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
       blanks: question.blanks.length ? question.blanks : [{ id: nanoid(), answer: '' }],
       options: question.options || [],
       points: question.points ?? 1,
+      order: question.order ?? 1,
       isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
@@ -596,6 +553,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
       ...question,
       answers,
       points: question.points ?? 1,
+      order: question.order ?? 1,
       isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
@@ -611,19 +569,46 @@ function mapQuestionToValues(question: Question): QuestionInput {
             { id: nanoid(), left: '', right: '' },
           ],
       points: question.points ?? 1,
+      order: question.order ?? 1,
       isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
 
   if (question.type === 'order-words') {
-    // Use correctOrder as primary, fallback to words for backward compatibility
-    const correctOrder = question.correctOrder ?? question.words ?? []
+    // In Firestore, 'order' can be an array (correct answer) or a number (question position)
+    // Check if order is an array (from Firestore student app format)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const questionOrder = (question as any).order
+    const isOrderArray = Array.isArray(questionOrder)
+    
+    // Use correctOrder as primary, fallback to words, then check if order is an array
+    let correctOrder = question.correctOrder ?? question.words ?? []
+    
+    // If order is an array (from Firestore), use it as the correct answer
+    if (isOrderArray && questionOrder.length > 0) {
+      correctOrder = questionOrder
+    }
+    
+    // If correctOrder is still empty but prompt exists, try to extract words from prompt
+    if ((!correctOrder || correctOrder.length === 0) && question.prompt) {
+      const wordsFromPrompt = question.prompt.trim().split(/\s+/).filter((word) => word.length > 0)
+      if (wordsFromPrompt.length > 0) {
+        correctOrder = wordsFromPrompt
+      }
+    }
+    
+    // Get the question position order (number), not the word array
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const questionPositionOrder = isOrderArray ? ((question as any).questionOrder ?? 1) : (typeof questionOrder === 'number' ? questionOrder : question.order ?? 1)
+    
     return {
       ...question,
+      prompt: question.prompt || '',
       words: correctOrder, // Sync words with correctOrder for schema validation
       correctOrder: correctOrder,
       points: question.points ?? 1,
+      order: questionPositionOrder, // Question position order (number)
       isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
@@ -632,19 +617,5 @@ function mapQuestionToValues(question: Question): QuestionInput {
   return question as QuestionInput
 }
 
-function formatQuizTypeLabel(quizType: Quiz['quizType']) {
-  switch (quizType) {
-    case 'fill-in':
-      return 'Fill in the Blanks'
-    case 'spelling':
-      return 'Spelling'
-    case 'matching':
-      return 'Matching'
-    case 'order-words':
-      return 'Order Words'
-    default:
-      return quizType
-  }
-}
 
 

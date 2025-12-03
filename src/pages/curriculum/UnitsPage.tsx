@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
+import { PageLoader } from '@/components/feedback/PageLoader'
 import { unitSchema, type UnitFormValues } from '@/utils/schemas'
 import { gradeService } from '@/services/firebase'
 import { hierarchicalUnitService } from '@/services/hierarchicalServices'
@@ -19,36 +21,39 @@ import { useUI } from '@/context/UIContext'
 type UnitTableRow = Unit & { gradeName: string; lessonCount: number }
 
 export function UnitsPage() {
+  const { gradeId } = useParams<{ gradeId: string }>()
+  const navigate = useNavigate()
   const { user } = useAuth()
   const { setPageTitle, notifyError, notifySuccess, confirmAction } = useUI()
-  const [selectedGradeId, setSelectedGradeId] = useState<string | 'all'>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null)
 
   const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, isLoading: cacheLoading, refreshUnits } = useCurriculumCache()
   
-  // Auto-select first grade if only one exists
-  useEffect(() => {
-    if (grades.length === 1 && selectedGradeId === 'all') {
-      setSelectedGradeId(grades[0].id)
-    }
-  }, [grades, selectedGradeId])
+  // Get the current grade
+  const currentGrade = grades.find((g) => g.id === gradeId)
   
   const [units, setUnits] = useState<Unit[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  // Listen to units for selected grade (hierarchical structure)
+  // Redirect if gradeId is missing
   useEffect(() => {
-    if (selectedGradeId === 'all' || !selectedGradeId) {
-      // If 'all', use cached data from context
-      setUnits(cachedAllUnits)
-      setIsLoading(cacheLoading)
+    if (!gradeId) {
+      navigate('/curriculum/grades')
+    }
+  }, [gradeId, navigate])
+
+  // Listen to units for the grade from URL (hierarchical structure)
+  useEffect(() => {
+    if (!gradeId) {
+      setIsLoading(false)
+      setUnits([])
       return
     }
 
     setIsLoading(true)
     const unsubscribe = hierarchicalUnitService.listen(
-      selectedGradeId,
+      gradeId,
       (data) => {
         setUnits(data)
         setIsLoading(false)
@@ -57,7 +62,7 @@ export function UnitsPage() {
     )
 
     return unsubscribe
-  }, [selectedGradeId, cachedAllUnits, cacheLoading])
+  }, [gradeId])
 
   // Use cached lessons from context
   const allLessons = cachedAllLessons
@@ -73,7 +78,7 @@ export function UnitsPage() {
   })
 
   useEffect(() => {
-    setPageTitle('Unit Management')
+    setPageTitle('Units')
   }, [setPageTitle])
 
   useEffect(() => {
@@ -86,12 +91,12 @@ export function UnitsPage() {
       })
     } else {
       form.reset({
-        gradeId: selectedGradeId === 'all' ? '' : selectedGradeId,
+        gradeId: gradeId || '',
         number: 1,
         isPublished: false,
       })
     }
-  }, [editingUnit, selectedGradeId, form])
+  }, [editingUnit, gradeId, form])
 
   const rows = useMemo<UnitTableRow[]>(() => {
     const gradeMap = new Map(grades.map((grade) => [grade.id, grade.name]))
@@ -106,13 +111,7 @@ export function UnitsPage() {
         gradeName: gradeMap.get(unit.gradeId) ?? '—',
         lessonCount: lessonsPerUnit[`${unit.gradeId}_${unit.id}`] ?? 0,
       }))
-      .sort((a, b) => {
-        // First sort by grade name (alphabetically)
-        const gradeCompare = (a.gradeName || '').localeCompare(b.gradeName || '')
-        if (gradeCompare !== 0) return gradeCompare
-        // Then sort by unit number within the same grade
-        return a.number - b.number
-      })
+      .sort((a, b) => a.number - b.number)
   }, [units, grades, allLessons])
 
   const handleOpenNew = () => {
@@ -186,15 +185,15 @@ export function UnitsPage() {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    if (!gradeId) {
+      notifyError('Grade required', 'Grade ID is missing')
+      return
+    }
     try {
-      if (!values.gradeId) {
-        notifyError('Grade required', 'Please select a grade')
-        return
-      }
 
       // Check for duplicate unit number in the same grade
       const duplicateUnit = units.find(
-        (u) => u.number === values.number && u.gradeId === values.gradeId && u.id !== editingUnit?.id,
+        (u) => u.number === values.number && u.gradeId === gradeId && u.id !== editingUnit?.id,
       )
       if (duplicateUnit) {
         notifyError('Duplicate unit', `Unit ${values.number} already exists for this grade.`)
@@ -219,13 +218,13 @@ export function UnitsPage() {
         notifySuccess('Unit updated successfully')
         refreshUnits() // Refresh cache
       } else {
-        await hierarchicalUnitService.create(values.gradeId, {
-          gradeId: values.gradeId,
+        await hierarchicalUnitService.create(gradeId, {
+          gradeId: gradeId,
           number: values.number,
           isPublished: values.isPublished,
         })
         // Log action
-        await gradeService.update(values.gradeId, {}, user.uid, { action: 'create_unit' })
+        await gradeService.update(gradeId, {}, user.uid, { action: 'create_unit' })
         notifySuccess('Unit created successfully')
         refreshUnits() // Refresh cache
       }
@@ -238,19 +237,10 @@ export function UnitsPage() {
   const columns: Array<DataTableColumn<UnitTableRow>> = [
     {
       key: 'number',
-      header: 'Units',
+      header: 'Unit',
       width: '60px',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.number}</span>,
-    },
-    { 
-      key: 'gradeName', 
-      header: 'Grade',
-      render: (row) => (
-        <div className="truncate max-w-[150px]" title={row.gradeName}>
-          {row.gradeName}
-        </div>
-      ),
     },
     {
       key: 'lessonCount',
@@ -275,40 +265,51 @@ export function UnitsPage() {
     },
   ]
 
+  // Show loader while data is loading
+  if (cacheLoading || isLoading) {
+    return <PageLoader />
+  }
+
+  // Show error only after loading is complete
+  if (!gradeId || !currentGrade) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Grade not found</p>
+          <Button asChild variant="link" className="mt-2">
+            <Link to="/curriculum/grades">Back to Grades</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Units</h2>
-          <p className="text-sm text-muted-foreground">Group lessons into structured units aligned to each grade.</p>
+          <h2 className="text-base font-medium text-foreground flex items-center gap-1.5 flex-wrap">
+            <Link to="/curriculum" className="hover:text-primary transition-colors">
+              {currentGrade.name}
+            </Link>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <span className="text-foreground">Units</span>
+          </h2>
+          <p className="text-sm text-muted-foreground">Group lessons into structured units for this grade.</p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Select value={selectedGradeId} onValueChange={(value: string) => setSelectedGradeId(value as typeof selectedGradeId)}>
-            <SelectTrigger className="w-[220px]">
-              <SelectValue placeholder="Filter by grade" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All grades</SelectItem>
-              {grades.map((grade) => (
-                <SelectItem key={grade.id} value={grade.id}>
-                  {grade.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleOpenNew} className="rounded-full px-6">
-            Add Unit
-          </Button>
-        </div>
+        <Button onClick={handleOpenNew} className="rounded-full px-6">
+          Add Unit
+        </Button>
       </div>
 
       <DataTable
         data={rows}
         columns={columns}
         isLoading={isLoading}
-        emptyMessage="No units yet. Start by adding a unit for your selected grade."
+        emptyMessage="No units yet. Start by adding a unit for this grade."
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onRowClick={(unit) => navigate(`/curriculum/${gradeId}/${unit.id}/lessons`)}
       />
 
       <FormModal
@@ -322,35 +323,6 @@ export function UnitsPage() {
       >
         <Form {...form}>
           <form className="space-y-4">
-            <FormField
-              name="gradeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Grade</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select grade" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {grades.length === 0 ? (
-                        <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                          No grades available. Please create a grade first.
-                        </div>
-                      ) : (
-                        grades.map((grade) => (
-                          <SelectItem key={grade.id} value={grade.id}>
-                            {grade.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
             <FormField
               name="number"
               render={({ field }) => (

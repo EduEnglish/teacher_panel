@@ -26,10 +26,11 @@ type DataTableProps<T> = {
   caption?: string
   onEdit?: (item: T) => void
   onDelete?: (item: T) => void
+  onRowClick?: (item: T) => void
   isLoading?: boolean
 }
 
-export function DataTable<T>({ data, columns, emptyMessage = 'No records found', caption, onEdit, onDelete, isLoading }: DataTableProps<T>) {
+export function DataTable<T>({ data, columns, emptyMessage = 'No records found', caption, onEdit, onDelete, onRowClick, isLoading }: DataTableProps<T>) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-sm">
       <Table>
@@ -68,7 +69,11 @@ export function DataTable<T>({ data, columns, emptyMessage = 'No records found',
             </TableRow>
           ) : (
             data.map((item, index) => (
-              <TableRow key={index}>
+              <TableRow 
+                key={index}
+                onClick={() => onRowClick?.(item)}
+                className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : undefined}
+              >
                 {columns.map((column) => {
                   const value = column.render
                     ? column.render(item)
@@ -86,7 +91,7 @@ export function DataTable<T>({ data, columns, emptyMessage = 'No records found',
                   )
                 })}
                 {(onEdit || onDelete) && (
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
@@ -96,12 +101,12 @@ export function DataTable<T>({ data, columns, emptyMessage = 'No records found',
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         {onEdit && (
-                          <DropdownMenuItem onClick={() => onEdit(item)} className="gap-2">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(item); }} className="gap-2">
                             <Pencil className="h-4 w-4" /> Edit
                           </DropdownMenuItem>
                         )}
                         {onDelete && (
-                          <DropdownMenuItem onClick={() => onDelete(item)} className="gap-2 text-destructive">
+                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDelete(item); }} className="gap-2 text-destructive">
                             <Trash className="h-4 w-4" /> Delete
                           </DropdownMenuItem>
                         )}

@@ -8,17 +8,22 @@ import type { Question, SpellingQuestion } from '@/types/models'
 export function renderQuestionPreview(question: Question) {
   switch (question.type) {
     case 'fill-in':
+      const blanks = question.blanks || []
       return (
         <div className="space-y-2">
           <p className="font-medium text-foreground">Sentence</p>
           <p>{question.prompt || (question as any).sentence || ''}</p>
           <p className="font-medium text-foreground">Answers</p>
           <div className="flex flex-wrap gap-2">
-            {question.blanks.map((blank) => (
-              <Badge key={blank.id} variant="secondary">
-                {blank.answer}
-              </Badge>
-            ))}
+            {blanks.length > 0 ? (
+              blanks.map((blank) => (
+                <Badge key={blank.id} variant="secondary">
+                  {blank.answer}
+                </Badge>
+              ))
+            ) : (
+              <p className="text-xs text-muted-foreground">No answers defined</p>
+            )}
           </div>
         </div>
       )
@@ -56,22 +61,30 @@ export function renderQuestionPreview(question: Question) {
           : []
       return (
         <div className="grid gap-2">
-          {pairsArray.map((pair) => (
-            <div key={pair.id || pair.left} className="grid grid-cols-2 gap-3 rounded-lg border border-border p-2">
-              <span>{pair.left}</span>
-              <span className="font-semibold text-foreground">{pair.right}</span>
-            </div>
-          ))}
+          {pairsArray.length > 0 ? (
+            pairsArray.map((pair) => (
+              <div key={pair.id || pair.left} className="grid grid-cols-2 gap-3 rounded-lg border border-border p-2">
+                <span>{pair.left || ''}</span>
+                <span className="font-semibold text-foreground">{pair.right || ''}</span>
+              </div>
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground">No pairs defined</p>
+          )}
         </div>
       )
     }
-    case 'order-words':
+    case 'order-words': {
+      // Handle both correctOrder and words fields (backward compatibility)
+      const correctOrder = question.correctOrder || question.words || []
+      const sentence = Array.isArray(correctOrder) ? correctOrder.join(' ') : ''
       return (
         <div className="space-y-2">
           <p className="font-medium text-foreground">Correct Answer:</p>
-          <p className="text-foreground">{question.correctOrder.join(' ')}</p>
+          <p className="text-foreground">{sentence || 'No answer defined'}</p>
         </div>
       )
+    }
     default:
       return null
   }
