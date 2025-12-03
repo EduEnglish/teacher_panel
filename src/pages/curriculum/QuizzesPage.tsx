@@ -16,7 +16,7 @@ import { quizSchema, type QuizFormValues } from '@/utils/schemas'
 import { quizTypeOptions } from '@/utils/constants'
 import { createQuizWithQuestions, updateQuizWithQuestions, deleteQuizWithQuestions, getQuizWithQuestions, getQuizzesForSection } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Question, Quiz } from '@/types/models'
+import type { Quiz } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -39,7 +39,7 @@ export function QuizzesPage() {
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null)
   const [questionCounts, setQuestionCounts] = useState<Record<string, number>>({})
 
-  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshQuizzes } = useCurriculumCache()
+  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, isLoading: cacheLoading, refreshQuizzes } = useCurriculumCache()
   
   // Get the current grade, unit, lesson, and section
   const currentGrade = grades.find((g) => g.id === gradeId)

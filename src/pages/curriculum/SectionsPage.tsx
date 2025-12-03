@@ -27,7 +27,7 @@ export function SectionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSection, setEditingSection] = useState<Section | null>(null)
 
-  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshSections } = useCurriculumCache()
+  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshSections } = useCurriculumCache()
   
   // Get the current grade, unit, and lesson
   const currentGrade = grades.find((g) => g.id === gradeId)

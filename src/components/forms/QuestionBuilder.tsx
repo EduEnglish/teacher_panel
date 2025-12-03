@@ -87,6 +87,11 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     name: 'pairs' as never,
   })
 
+  const additionalWordsFieldArray = useFieldArray({
+    control: form.control,
+    name: 'additionalWords' as never,
+  })
+
 
   useEffect(() => {
     const values = currentEditingQuestion ? mapQuestionToValues(currentEditingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
@@ -96,14 +101,22 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   // Separate effect to update orderWordsSentence state for order-words questions
   useEffect(() => {
     if (quiz.quizType === 'order-words' && currentEditingQuestion) {
-      const values = mapQuestionToValues(currentEditingQuestion)
-      const correctOrder = (values as OrderWordsQuestionFormValues).correctOrder ?? []
-      const sentence = Array.isArray(correctOrder) && correctOrder.length > 0 ? correctOrder.join(' ') : ''
-      setOrderWordsSentence(sentence)
+      // Get values from form after reset (more reliable than mapQuestionToValues)
+      const formValues = form.getValues() as OrderWordsQuestionFormValues
+      // Use correctAnswer if available, otherwise fallback to joining correctOrder
+      const correctAnswer = formValues.correctAnswer
+      if (correctAnswer && correctAnswer.trim().length > 0) {
+        setOrderWordsSentence(correctAnswer)
+      } else {
+        // Fallback: construct from correctOrder array
+        const correctOrder = formValues.correctOrder ?? []
+        const sentence = Array.isArray(correctOrder) && correctOrder.length > 0 ? correctOrder.join(' ') : ''
+        setOrderWordsSentence(sentence)
+      }
     } else if (quiz.quizType === 'order-words' && !currentEditingQuestion) {
       setOrderWordsSentence('')
     }
-  }, [currentEditingQuestion, quiz.quizType])
+  }, [currentEditingQuestion, quiz.quizType, form])
 
   const handleSubmit = form.handleSubmit(async (values) => {
     // Ensure question type matches quiz type
@@ -372,6 +385,25 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
             {isOrderWords && (
               <div className="space-y-3 border-t border-border pt-5">
                 <FormField
+                  name="instructionTitle"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Instruction Title</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="e.g., Correct the form of the verb:"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-xs text-muted-foreground">
+                        This text will be displayed above the question in the mobile app.
+                      </p>
+                    </FormItem>
+                  )}
+                />
+                <FormField
                   name="correctOrder"
                   render={({ field }) => {
                     return (
@@ -387,28 +419,29 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                               // Update local state immediately to allow free typing with spaces
                               setOrderWordsSentence(sentence)
                               
-                              // Split sentence into words for form storage
-                              const words = sentence.trim()
-                                ? sentence
-                                    .trim()
-                                    .split(/\s+/)
-                                    .filter((word) => word.length > 0)
-                                : []
+                              // Separate words and punctuation
+                              const { words, punctuation } = separateWordsAndPunctuation(sentence)
+                              
+                              // Normalize words to lowercase for storage (but keep original in display)
+                              const normalizedWords = words.map(w => w.toLowerCase())
                               
                               // Update form fields
-                              field.onChange(words)
-                              form.setValue('words', words)
+                              field.onChange(normalizedWords)
+                              form.setValue('words', normalizedWords)
+                              form.setValue('punctuation', punctuation)
+                              // Store the complete correct answer exactly as entered
+                              form.setValue('correctAnswer', sentence.trim())
                             }}
                             onBlur={() => {
                               // Ensure form is synced on blur
-                              const words = orderWordsSentence.trim()
-                                ? orderWordsSentence
-                                    .trim()
-                                    .split(/\s+/)
-                                    .filter((word) => word.length > 0)
-                                : []
-                              field.onChange(words)
-                              form.setValue('words', words)
+                              const { words, punctuation } = separateWordsAndPunctuation(orderWordsSentence)
+                              // Normalize words to lowercase for storage
+                              const normalizedWords = words.map(w => w.toLowerCase())
+                              field.onChange(normalizedWords)
+                              form.setValue('words', normalizedWords)
+                              form.setValue('punctuation', punctuation)
+                              // Store the complete correct answer exactly as entered
+                              form.setValue('correctAnswer', orderWordsSentence.trim())
                             }}
                           />
                         </FormControl>
@@ -420,6 +453,51 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                     )
                   }}
                 />
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Additional Words (Optional)</FormLabel>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => additionalWordsFieldArray.append('')}
+                    >
+                      Add Word
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Add extra words that will be mixed with the correct answer words to make the question more challenging.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {additionalWordsFieldArray.fields.map((fieldItem, index) => (
+                      <FormField
+                        key={fieldItem.id}
+                        name={`additionalWords.${index}` as const}
+                        render={({ field }) => (
+                          <FormItem className="space-y-2">
+                            <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
+                              Word {index + 1}
+                            </FormLabel>
+                            <div className="flex items-center gap-2">
+                              <FormControl>
+                                <Input {...field} placeholder="Additional word" />
+                              </FormControl>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => additionalWordsFieldArray.remove(index)}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -472,6 +550,65 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
   )
 }
 
+// Helper function to separate words and punctuation from a sentence
+function separateWordsAndPunctuation(sentence: string): { words: string[]; punctuation: string[] } {
+  if (!sentence.trim()) {
+    return { words: [], punctuation: [] }
+  }
+
+  // Common punctuation marks (ordered by length to check longer ones first, e.g., "'s" before "'")
+  const punctuationMarks = ["'s", '.', ',', '?', '!', ':', ';', "'", '"', '(', ')', '[', ']', '{', '}']
+  
+  const words: string[] = []
+  const punctuationSet = new Set<string>()
+  
+  // Split by whitespace first
+  const parts = sentence.trim().split(/\s+/).filter(part => part.length > 0)
+  
+  for (const part of parts) {
+    // Check if the entire part is punctuation
+    if (punctuationMarks.includes(part)) {
+      punctuationSet.add(part)
+      continue
+    }
+    
+    // Extract words and punctuation from mixed parts (e.g., "word," or "Sara's")
+    let remainingPart = part
+    const foundPunctuation: string[] = []
+    
+    // Check for punctuation at the end (check longer marks first, especially "'s")
+    // This handles cases like "Sara's" -> "Sara" + "'s"
+    for (const mark of punctuationMarks) {
+      if (remainingPart.endsWith(mark)) {
+        remainingPart = remainingPart.slice(0, -mark.length)
+        foundPunctuation.push(mark)
+        break // Only remove one punctuation mark at a time
+      }
+    }
+    
+    // Check for punctuation at the beginning
+    for (const mark of punctuationMarks) {
+      if (remainingPart.startsWith(mark)) {
+        remainingPart = remainingPart.slice(mark.length)
+        foundPunctuation.push(mark)
+        break // Only remove one punctuation mark at a time
+      }
+    }
+    
+    // Add word if it's not empty (keep original case for display, but we'll normalize in storage)
+    if (remainingPart.trim().length > 0) {
+      words.push(remainingPart.trim())
+    }
+    
+    // Add punctuation marks found
+    for (const mark of foundPunctuation) {
+      punctuationSet.add(mark)
+    }
+  }
+  
+  return { words, punctuation: Array.from(punctuationSet) }
+}
+
 function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionInput {
   switch (quizType) {
     case 'fill-in':
@@ -518,6 +655,10 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         prompt: '',
         words: [], // Keep for schema validation, will be synced with correctOrder
         correctOrder: [],
+        correctAnswer: '',
+        instructionTitle: '',
+        additionalWords: [],
+        punctuation: [],
         type: 'order-words',
         order: 1,
         points: 1,
@@ -602,11 +743,20 @@ function mapQuestionToValues(question: Question): QuestionInput {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const questionPositionOrder = isOrderArray ? ((question as any).questionOrder ?? 1) : (typeof questionOrder === 'number' ? questionOrder : question.order ?? 1)
     
+    // Get punctuation from question, default to empty array
+    const punctuation = question.punctuation || []
+    // Get correctAnswer from question, default to empty string
+    const correctAnswer = question.correctAnswer || ''
+
     return {
       ...question,
       prompt: question.prompt || '',
       words: correctOrder, // Sync words with correctOrder for schema validation
       correctOrder: correctOrder,
+      correctAnswer: correctAnswer,
+      instructionTitle: question.instructionTitle || '',
+      additionalWords: question.additionalWords || [],
+      punctuation: punctuation,
       points: question.points ?? 1,
       order: questionPositionOrder, // Question position order (number)
       isPublished: question.isPublished ?? false,

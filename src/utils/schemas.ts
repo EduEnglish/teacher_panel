@@ -112,6 +112,10 @@ export const orderWordsQuestionSchema = z.object({
   prompt: z.string().min(3),
   words: z.array(z.string().min(1)).min(2, 'Add at least two words'),
   correctOrder: z.array(z.string().min(1)).min(2, 'Provide the correct order'),
+  correctAnswer: z.string().optional(), // Complete correct answer sentence exactly as entered
+  instructionTitle: z.string().optional(), // Optional instruction text for mobile app
+  additionalWords: z.array(z.string().min(1)).optional(), // Additional words for distraction
+  punctuation: z.array(z.string().min(1)).optional(), // Punctuation marks separated from words
   type: z.literal('order-words'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),

@@ -28,7 +28,7 @@ export function UnitsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUnit, setEditingUnit] = useState<Unit | null>(null)
 
-  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, isLoading: cacheLoading, refreshUnits } = useCurriculumCache()
+  const { grades, allLessons: cachedAllLessons, isLoading: cacheLoading, refreshUnits } = useCurriculumCache()
   
   // Get the current grade
   const currentGrade = grades.find((g) => g.id === gradeId)

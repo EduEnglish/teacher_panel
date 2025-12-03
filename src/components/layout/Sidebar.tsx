@@ -1,4 +1,3 @@
-import { Fragment } from 'react'
 import { NavLink } from 'react-router-dom'
 import { ChevronLeft, ChevronRight, GraduationCap } from 'lucide-react'
 import { navigationLinks } from '@/utils/constants'
@@ -42,8 +41,7 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 px-3">
         {navigationLinks.map((item) => {
           const Icon = item.icon
-          const hasChildren = Array.isArray(item.children)
-          const content = (
+          return (
             <NavLink
               key={item.to}
               to={item.to}
@@ -58,34 +56,6 @@ export function Sidebar() {
               <Icon className="h-5 w-5 flex-shrink-0" />
               {!sidebarCollapsed && <span>{item.label}</span>}
             </NavLink>
-          )
-
-          if (!hasChildren || sidebarCollapsed) {
-            return <Fragment key={item.to}>{content}</Fragment>
-          }
-
-          return (
-            <div key={item.to} className="space-y-1">
-              {content}
-              {!sidebarCollapsed && (
-                <div className="ml-10 space-y-1">
-                  {item.children?.map((child) => (
-                    <NavLink
-                      key={child.to}
-                      to={child.to}
-                      className={({ isActive }) =>
-                        cn(
-                          'block rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition hover:bg-secondary hover:text-secondary-foreground',
-                          isActive && 'bg-secondary text-secondary-foreground',
-                        )
-                      }
-                    >
-                      {child.label}
-                    </NavLink>
-                  ))}
-                </div>
-              )}
-            </div>
           )
         })}
       </nav>

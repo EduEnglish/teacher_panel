@@ -13,9 +13,9 @@ import { FormModal } from '@/components/forms/FormModal'
 import { PageLoader } from '@/components/feedback/PageLoader'
 import { lessonSchema, type LessonFormValues } from '@/utils/schemas'
 import { lessonTitleOptions } from '@/utils/constants'
-import { hierarchicalUnitService, hierarchicalLessonService } from '@/services/hierarchicalServices'
+import { hierarchicalLessonService } from '@/services/hierarchicalServices'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
-import type { Lesson, Unit } from '@/types/models'
+import type { Lesson } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -29,7 +29,7 @@ export function LessonsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null)
 
-  const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allSections: cachedAllSections, isLoading: cacheLoading, refreshLessons } = useCurriculumCache()
+  const { grades, allUnits: cachedAllUnits, allSections: cachedAllSections, isLoading: cacheLoading, refreshLessons } = useCurriculumCache()
   
   // Get the current grade and unit
   const currentGrade = grades.find((g) => g.id === gradeId)

@@ -24,7 +24,11 @@ export interface StudentAppQuestion {
   options?: string[] // Optional, for fill_blank multiple choice
   answers: string[] // Array of answers
   pairs?: Record<string, string> // For matching type
-  order?: string[] // For order_words type
+  order?: string[] // For order_words type - words only (without punctuation)
+  correctAnswer?: string // For order_words type - complete correct answer sentence exactly as entered
+  instructionTitle?: string // For order_words type - instruction text displayed above question
+  additionalWords?: string[] // For order_words type - additional words mixed with correct answer
+  punctuation?: string[] // For order_words type - punctuation marks separated from words
   hint?: string
   points: number
 }
@@ -123,6 +127,10 @@ function transformOrderWordsQuestion(question: OrderWordsQuestion): StudentAppQu
     answers: [],
     pairs: undefined,
     order: question.correctOrder ?? question.words ?? [],
+    correctAnswer: question.correctAnswer,
+    instructionTitle: question.instructionTitle,
+    additionalWords: question.additionalWords,
+    punctuation: question.punctuation,
     hint: question.explanation,
     points: question.points ?? 1,
   }
@@ -231,6 +239,18 @@ export function prepareQuizDocumentForFirestore(
         questionObj.pairs = q.pairs
       } else if (q.type === 'order_words') {
         questionObj.order = q.order
+        if (q.correctAnswer) {
+          questionObj.correctAnswer = q.correctAnswer
+        }
+        if (q.instructionTitle) {
+          questionObj.instructionTitle = q.instructionTitle
+        }
+        if (q.additionalWords && q.additionalWords.length > 0) {
+          questionObj.additionalWords = q.additionalWords
+        }
+        if (q.punctuation && q.punctuation.length > 0) {
+          questionObj.punctuation = q.punctuation
+        }
       }
 
       // Add hint if present

@@ -95,6 +95,10 @@ export interface OrderWordsQuestion extends QuestionBase {
   type: 'order-words'
   words: string[]
   correctOrder: string[]
+  correctAnswer?: string // Complete correct answer sentence exactly as entered (e.g., "This is Sara's book")
+  instructionTitle?: string // Optional instruction text displayed above the question in mobile app
+  additionalWords?: string[] // Additional words to mix with correct answer words for distraction
+  punctuation?: string[] // Punctuation marks separated from words
 }
 
 export type Question = FillInQuestion | SpellingQuestion | MatchingQuestion | OrderWordsQuestion
