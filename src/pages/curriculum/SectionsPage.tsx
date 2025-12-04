@@ -264,7 +264,7 @@ export function SectionsPage() {
       key: 'title', 
       header: 'Section Title',
       render: (row) => (
-        <div className="truncate max-w-[200px]" title={row.title}>
+        <div className="whitespace-normal break-words" title={row.title}>
           {row.title}
         </div>
       ),

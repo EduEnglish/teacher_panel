@@ -72,11 +72,6 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     name: 'blanks' as never,
   })
 
-  const optionsFieldArray = useFieldArray({
-    control: form.control,
-    name: 'options' as never,
-  })
-
   const answersFieldArray = useFieldArray({
     control: form.control,
     name: 'answers' as never,
@@ -96,7 +91,8 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   useEffect(() => {
     const values = currentEditingQuestion ? mapQuestionToValues(currentEditingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
     form.reset(values)
-  }, [currentEditingQuestion, quiz.id, quiz.quizType, form])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEditingQuestion, quiz.id, quiz.quizType])
 
   // Separate effect to update orderWordsSentence state for order-words questions
   useEffect(() => {
@@ -116,7 +112,8 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     } else if (quiz.quizType === 'order-words' && !currentEditingQuestion) {
       setOrderWordsSentence('')
     }
-  }, [currentEditingQuestion, quiz.quizType, form])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentEditingQuestion, quiz.quizType])
 
   const handleSubmit = form.handleSubmit(async (values) => {
     // Ensure question type matches quiz type
@@ -192,96 +189,105 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
 
             {isFillIn && (
               <div className="space-y-5 border-t border-border pt-5">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <FormLabel>Accepted Answers</FormLabel>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => blanksFieldArray.append({ id: nanoid(), answer: '' } as never)}
-                    >
-                      Add more answers
-                    </Button>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {blanksFieldArray.fields.map((fieldItem, index) => (
+                <div className="flex items-center justify-between">
+                  <FormLabel>Blanks</FormLabel>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => blanksFieldArray.append({ id: nanoid(), answer: '', options: [] } as never)}
+                  >
+                    Add Blank
+                  </Button>
+                </div>
+                
+                {blanksFieldArray.fields.map((fieldItem, blankIndex) => {
+                  const currentOptions = form.watch(`blanks.${blankIndex}.options`) as string[] || []
+                  
+                  return (
+                    <div key={fieldItem.id} className="space-y-4 border border-border rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-base font-semibold">Blank {blankIndex + 1}</FormLabel>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => blanksFieldArray.remove(blankIndex)}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                      
+                      {/* Answer for this blank */}
                       <FormField
-                        key={fieldItem.id}
-                        name={`blanks.${index}.answer` as const}
+                        name={`blanks.${blankIndex}.answer` as const}
                         render={({ field }) => (
-                          <FormItem className="space-y-2">
-                            <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
-                              Answer {index + 1}
-                            </FormLabel>
-                            <div className="flex items-center gap-2">
-                              <FormControl>
-                                <Input {...field} placeholder="Correct word" />
-                              </FormControl>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => blanksFieldArray.remove(index)}
-                              >
-                                ×
-                              </Button>
-                            </div>
+                          <FormItem>
+                            <FormLabel>Correct Answer for Blank {blankIndex + 1}</FormLabel>
+                            <FormControl>
+                              <Input {...field} placeholder="Enter correct answer" />
+                            </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-3 border-t border-border pt-4">
-                  <div className="flex items-center justify-between">
-                    <FormLabel>Multiple Choice Options (Optional)</FormLabel>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => optionsFieldArray.append('')}
-                    >
-                      Add more options
-                    </Button>
-                  </div>
-                 
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {optionsFieldArray.fields.map((fieldItem, index) => (
-                      <FormField
-                        key={fieldItem.id}
-                        name={`options.${index}` as const}
-                        render={({ field }) => (
-                          <FormItem className="space-y-2">
-                            <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
-                              Option {index + 1}
-                            </FormLabel>
-                            <div className="flex items-center gap-2">
-                              <FormControl>
-                                <Input {...field} placeholder="Option text" />
-                              </FormControl>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => optionsFieldArray.remove(index)}
-                              >
-                                ×
-                              </Button>
-                            </div>
-                            <FormMessage />
-                          </FormItem>
+                      
+                      {/* Options for this blank */}
+                      <div className="space-y-3 border-t border-border pt-4">
+                        <div className="flex items-center justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
+                              form.setValue(`blanks.${blankIndex}.options`, [...current, ''])
+                            }}
+                          >
+                            Options
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          {currentOptions.map((_, optionIndex) => (
+                            <FormField
+                              key={optionIndex}
+                              name={`blanks.${blankIndex}.options.${optionIndex}` as const}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <div className="flex items-center gap-2">
+                                    <FormControl>
+                                      <Input {...field} placeholder="Option text" />
+                                    </FormControl>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => {
+                                        const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
+                                        const updated = current.filter((_, idx) => idx !== optionIndex)
+                                        form.setValue(`blanks.${blankIndex}.options`, updated)
+                                      }}
+                                    >
+                                      ×
+                                    </Button>
+                                  </div>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          ))}
+                        </div>
+                        
+                        {currentOptions.length === 0 && (
+                          <p className="text-xs text-muted-foreground italic">
+                            No options added. Students will type their answer freely.
+                          </p>
                         )}
-                      />
-                    ))}
-                  </div>
-                  {optionsFieldArray.fields.length === 0 && (
-                    <p className="text-xs text-muted-foreground italic">
-                      No options added. Students will type their answers freely.
-                    </p>
-                  )}
-                </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
@@ -615,7 +621,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
       return {
         quizId,
         prompt: '',
-        blanks: [{ id: nanoid(), answer: '' }],
+        blanks: [{ id: nanoid(), answer: '', options: [] }],
         options: [],
         type: 'fill-in',
         order: 1,
@@ -670,11 +676,19 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
 
 function mapQuestionToValues(question: Question): QuestionInput {
   if (question.type === 'fill-in') {
+    // Ensure each blank has options array (for backward compatibility, migrate old options to first blank)
+    const blanks = question.blanks.length 
+      ? question.blanks.map(blank => ({
+          ...blank,
+          options: blank.options || (blank.id === question.blanks[0]?.id && question.options ? question.options : []),
+        }))
+      : [{ id: nanoid(), answer: '', options: [] }]
+    
     return {
       ...question,
       prompt: question.prompt || question.sentence || '', // Support both prompt and sentence for backward compatibility
-      blanks: question.blanks.length ? question.blanks : [{ id: nanoid(), answer: '' }],
-      options: question.options || [],
+      blanks: blanks,
+      options: question.options || [], // Keep for backward compatibility
       points: question.points ?? 1,
       order: question.order ?? 1,
       isPublished: question.isPublished ?? false,

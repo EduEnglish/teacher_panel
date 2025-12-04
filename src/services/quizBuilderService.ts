@@ -289,11 +289,49 @@ export async function getQuizWithQuestions(
         question.blanks = q.answers.map((answer: string, index: number) => ({
           id: `blank_${index}`,
           answer,
+          options: [], // Initialize empty options array
         }))
       }
-      // Preserve options if they exist
+      
+      // Handle blankOptions - convert from object format (Firestore) back to nested array
+      if (q.blankOptions) {
+        if (Array.isArray(q.blankOptions)) {
+          // Already in array format (backward compatibility or direct array)
+          const blankOptionsArray = q.blankOptions as string[][]
+          // Update blanks with per-blank options
+          if (question.blanks && Array.isArray(question.blanks)) {
+            blankOptionsArray.forEach((opts, index) => {
+              if (question.blanks && question.blanks[index]) {
+                question.blanks[index].options = opts
+              }
+            })
+          }
+        } else if (typeof q.blankOptions === 'object') {
+          // Convert from object format (Firestore) to nested array
+          const blankOptionsObj = q.blankOptions as Record<string, string[]>
+          const blankOptionsArray: string[][] = []
+          const keys = Object.keys(blankOptionsObj).sort((a, b) => Number(a) - Number(b))
+          keys.forEach((key) => {
+            blankOptionsArray[Number(key)] = blankOptionsObj[key]
+          })
+          // Update blanks with per-blank options
+          if (question.blanks && Array.isArray(question.blanks)) {
+            blankOptionsArray.forEach((opts, index) => {
+              if (question.blanks && question.blanks[index]) {
+                question.blanks[index].options = opts
+              }
+            })
+          }
+        }
+      }
+      
+      // Preserve options if they exist (for backward compatibility)
       if (q.options && Array.isArray(q.options)) {
         question.options = q.options
+        // If blanks don't have options yet, assign global options to first blank
+        if (question.blanks && question.blanks.length > 0 && (!question.blanks[0].options || question.blanks[0].options.length === 0)) {
+          question.blanks[0].options = q.options
+        }
       }
       // Preserve points
       if (q.points !== undefined) {

@@ -32,7 +32,7 @@ export function FormModal({
       <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          <DialogDescription>{description || ' '}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">{children}</div>
         <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">

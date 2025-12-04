@@ -161,7 +161,7 @@ export function GradesPage() {
       key: 'name', 
       header: 'Grade Name',
       render: (row) => (
-        <div className="truncate max-w-[200px]" title={row.name}>
+        <div className="whitespace-normal break-words" title={row.name}>
           {row.name}
         </div>
       ),
@@ -170,7 +170,7 @@ export function GradesPage() {
       key: 'description',
       header: 'Description',
       render: (row) => (
-        <div className="truncate max-w-[250px]" title={row.description || ''}>
+        <div className="whitespace-normal break-words" title={row.description || ''}>
           <span className="text-muted-foreground">{row.description || <span className="italic text-muted-foreground/60">No description</span>}</span>
         </div>
       ),

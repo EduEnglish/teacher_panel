@@ -21,7 +21,8 @@ export interface StudentAppQuestion {
   id: string
   prompt: string
   type: 'fill_blank' | 'spelling' | 'matching' | 'order_words'
-  options?: string[] // Optional, for fill_blank multiple choice
+  options?: string[] // Optional, for fill_blank multiple choice (for backward compatibility)
+  blankOptions?: string[][] // Per-blank options: blankOptions[0] = options for blank 1, blankOptions[1] = options for blank 2, etc.
   answers: string[] // Array of answers
   pairs?: Record<string, string> // For matching type
   order?: string[] // For order_words type - words only (without punctuation)
@@ -42,9 +43,8 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
   // Extract answers from blanks array - in order
   const answers = question.blanks.map((blank) => blank.answer.trim()).filter(Boolean)
 
-  // Options are optional in student app (for multiple choice)
-  // If teacher panel has options, include them
-  const options = question.options || []
+  // Extract per-blank options
+  const blankOptions = question.blanks.map((blank) => blank.options || [])
 
   // Use prompt directly (backward compatibility: use sentence if prompt is empty)
   const studentPrompt = question.prompt?.trim() || (question as any).sentence?.trim() || ''
@@ -53,7 +53,8 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
     id: question.id,
     prompt: studentPrompt,
     type: 'fill_blank',
-    options: options.length > 0 ? options : undefined,
+    options: undefined, // No longer using global options - only blankOptions
+    blankOptions: blankOptions.length > 0 ? blankOptions : undefined, // Per-blank options
     answers: answers,
     pairs: undefined,
     order: undefined,
@@ -229,8 +230,19 @@ export function prepareQuizDocumentForFirestore(
 
       // Add type-specific fields
       if (q.type === 'fill_blank') {
-        if (q.options && q.options.length > 0) {
-          questionObj.options = q.options
+        // Only save blankOptions, not global options
+        if (q.blankOptions && q.blankOptions.length > 0) {
+          // Convert nested array to object format for Firestore compatibility
+          // Firestore doesn't support nested arrays, so we use an object with numeric keys
+          const blankOptionsObj: Record<string, string[]> = {}
+          q.blankOptions.forEach((opts, index) => {
+            if (opts.length > 0) {
+              blankOptionsObj[String(index)] = opts
+            }
+          })
+          if (Object.keys(blankOptionsObj).length > 0) {
+            questionObj.blankOptions = blankOptionsObj
+          }
         }
         questionObj.answers = q.answers
       } else if (q.type === 'spelling') {

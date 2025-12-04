@@ -63,10 +63,11 @@ export const fillInQuestionSchema = z.object({
       z.object({
         id: z.string(),
         answer: z.string().min(1, 'Answer required'),
+        options: z.array(z.string().min(1, 'Option cannot be empty')).optional(), // Options specific to this blank
       }),
     )
     .min(1, 'At least one blank is required'),
-  options: z.array(z.string().min(1, 'Option cannot be empty')).optional(),
+  options: z.array(z.string().min(1, 'Option cannot be empty')).optional(), // For backward compatibility
   type: z.literal('fill-in'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),

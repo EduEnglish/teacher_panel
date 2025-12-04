@@ -84,6 +84,7 @@ export function DataTable<T>({ data, columns, emptyMessage = 'No records found',
                       className={cn(
                         column.align === 'center' && 'text-center',
                         column.align === 'right' && 'text-right',
+                        'whitespace-normal',
                       )}
                     >
                       {value as ReactNode}

@@ -347,10 +347,10 @@ export function QuestionsPage() {
       key: 'prompt',
       header: 'Question',
       render: (row) => (
-        <div className="max-w-[300px]">
-          <p className="text-sm font-medium text-foreground truncate" title={row.prompt}>{row.prompt}</p>
+        <div className="max-w-[400px]">
+          <p className="text-sm font-medium text-foreground whitespace-normal break-words" title={row.prompt}>{row.prompt}</p>
           {row.explanation && (
-            <p className="text-xs text-muted-foreground mt-1 truncate" title={row.explanation}>{row.explanation}</p>
+            <p className="text-xs text-muted-foreground mt-1 whitespace-normal break-words" title={row.explanation}>{row.explanation}</p>
           )}
         </div>
       ),
