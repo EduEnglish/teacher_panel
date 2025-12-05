@@ -17,6 +17,7 @@ export interface BaseEntity {
 export interface Grade extends Omit<BaseEntity, 'status'> {
   name: string
   description?: string
+  isPublished: boolean
   // Legacy field (for backward compatibility with existing Firebase data)
   status?: string
 }
@@ -36,7 +37,6 @@ export interface Lesson extends Omit<BaseEntity, 'status'> {
   unitId: string
   title: string
   order: number
-  isPublished: boolean
 }
 
 export interface Section extends Omit<BaseEntity, 'status'> {
@@ -45,7 +45,6 @@ export interface Section extends Omit<BaseEntity, 'status'> {
   lessonId: string
   title: string
   description?: string
-  isPublished: boolean
   videoLink?: string // Optional YouTube video link
 }
 

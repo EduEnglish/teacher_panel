@@ -12,7 +12,6 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  deleteField,
   query,
   serverTimestamp,
   onSnapshot,
@@ -245,7 +244,6 @@ export const hierarchicalLessonService = {
       id: docRef.id,
       gradeId: gradeId, // Keep for filtering
       unitId: unitId,
-      isPublished: data.isPublished ?? false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }
@@ -335,7 +333,6 @@ export const hierarchicalSectionService = {
       gradeId: gradeId, // Keep for filtering
       unitId: unitId, // Keep for filtering
       lessonId: lessonId,
-      isPublished: data.isPublished ?? false,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }

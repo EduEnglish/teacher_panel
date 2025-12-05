@@ -12,6 +12,7 @@ export const gradeSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2, 'Grade name must be at least 2 characters'),
   description: z.string().max(30, 'Description must be at most 30 characters').optional().or(z.literal('')),
+  isPublished: z.boolean(),
 })
 
 export const unitSchema = z.object({
