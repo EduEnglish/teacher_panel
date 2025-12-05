@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -48,6 +49,7 @@ export function GradesPage() {
     defaultValues: {
       name: '',
       description: '',
+      isPublished: false,
     },
   })
 
@@ -75,11 +77,13 @@ export function GradesPage() {
         id: editingGrade.id,
         name: editingGrade.name,
         description: editingGrade.description ?? '',
+        isPublished: editingGrade.isPublished ?? false,
       })
     } else {
       form.reset({
         name: '',
         description: '',
+        isPublished: false,
       })
     }
   }, [editingGrade, form])
@@ -92,6 +96,29 @@ export function GradesPage() {
   const handleEdit = (grade: Grade) => {
     setEditingGrade(grade)
     setIsModalOpen(true)
+  }
+
+  const handleTogglePublish = async (grade: Grade) => {
+    if (!user?.uid) {
+      notifyError('Missing admin session', 'Please sign in again.')
+      return
+    }
+    
+    // Optimistic update
+    const newPublishedState = !grade.isPublished
+    try {
+      await gradeService.update(
+        grade.id,
+        {
+          isPublished: newPublishedState,
+        },
+        user.uid,
+        { name: grade.name },
+      )
+      notifySuccess(newPublishedState ? 'Grade published' : 'Grade unpublished')
+    } catch (error) {
+      notifyError('Unable to update grade', error instanceof Error ? error.message : undefined)
+    }
   }
 
   const handleDelete = async (grade: Grade) => {
@@ -134,6 +161,7 @@ export function GradesPage() {
           {
             name: values.name,
             description: values.description?.trim() || '',
+            isPublished: values.isPublished,
           },
           user.uid,
           { name: values.name },
@@ -144,6 +172,7 @@ export function GradesPage() {
           {
             name: values.name,
             description: values.description?.trim() || '',
+            isPublished: values.isPublished,
           } as Omit<Grade, 'id' | 'createdAt' | 'updatedAt'>,
           user.uid,
           { name: values.name },
@@ -180,6 +209,21 @@ export function GradesPage() {
       header: 'Units',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.unitCount}</span>,
+    },
+    {
+      key: 'isPublished',
+      header: 'Published',
+      align: 'center',
+      render: (row) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch 
+            checked={row.isPublished ?? false} 
+            onCheckedChange={() => {
+              handleTogglePublish(row)
+            }}
+          />
+        </div>
+      ),
     },
   ]
 
@@ -237,6 +281,20 @@ export function GradesPage() {
                     <Input placeholder="Optional context for this grade" maxLength={30} {...field} />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              name="isPublished"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Publish to Mobile App</FormLabel>
+                    <p className="text-xs text-muted-foreground">Only published grades appear to students.</p>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
                 </FormItem>
               )}
             />

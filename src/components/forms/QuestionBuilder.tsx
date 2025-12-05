@@ -626,7 +626,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         type: 'fill-in',
         order: 1,
         points: 1,
-        isPublished: false,
         status: 'active',
       }
     case 'spelling':
@@ -637,7 +636,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         type: 'spelling',
         order: 1,
         points: 1,
-        isPublished: false,
         status: 'active',
       }
     case 'matching':
@@ -651,7 +649,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         type: 'matching',
         order: 1,
         points: 1,
-        isPublished: false,
         status: 'active',
       }
     case 'order-words':
@@ -668,7 +665,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         type: 'order-words',
         order: 1,
         points: 1,
-        isPublished: false,
         status: 'active',
       }
   }
@@ -691,7 +687,6 @@ function mapQuestionToValues(question: Question): QuestionInput {
       options: question.options || [], // Keep for backward compatibility
       points: question.points ?? 1,
       order: question.order ?? 1,
-      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -709,7 +704,6 @@ function mapQuestionToValues(question: Question): QuestionInput {
       answers,
       points: question.points ?? 1,
       order: question.order ?? 1,
-      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -725,7 +719,6 @@ function mapQuestionToValues(question: Question): QuestionInput {
           ],
       points: question.points ?? 1,
       order: question.order ?? 1,
-      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }
@@ -773,7 +766,6 @@ function mapQuestionToValues(question: Question): QuestionInput {
       punctuation: punctuation,
       points: question.points ?? 1,
       order: questionPositionOrder, // Question position order (number)
-      isPublished: question.isPublished ?? false,
       status: question.status ?? 'active',
     }
   }

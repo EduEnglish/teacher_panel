@@ -80,7 +80,6 @@ export function LessonsPage() {
       unitId: '',
       title: 'Grammar',
       order: 1,
-      isPublished: false,
     },
   })
 
@@ -121,7 +120,6 @@ export function LessonsPage() {
         unitId: editingLesson.unitId,
         title: editingLesson.title as LessonFormValues['title'],
         order: editingLesson.order,
-        isPublished: editingLesson.isPublished ?? false,
       })
     } else {
       form.reset({
@@ -129,7 +127,6 @@ export function LessonsPage() {
         unitId: unitId || '',
         title: 'Grammar',
         order: 1, // Will be auto-calculated when title is selected
-        isPublished: false,
       })
     }
   }, [editingLesson, gradeId, unitId, form])
@@ -162,35 +159,6 @@ export function LessonsPage() {
     setIsModalOpen(true)
   }
 
-  const handleTogglePublish = async (lesson: Lesson) => {
-    if (!user?.uid) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!lesson.gradeId || !lesson.unitId) {
-      notifyError('Invalid lesson', 'Lesson missing required IDs')
-      return
-    }
-    
-    // Optimistic update
-    const newPublishedState = !lesson.isPublished
-    setLessons((prevLessons) =>
-      prevLessons.map((l) => (l.id === lesson.id ? { ...l, isPublished: newPublishedState } : l)),
-    )
-    
-    try {
-      await hierarchicalLessonService.update(lesson.gradeId, lesson.unitId, lesson.id, {
-        isPublished: newPublishedState,
-      })
-      notifySuccess(newPublishedState ? 'Lesson published' : 'Lesson unpublished')
-    } catch (error) {
-      // Revert on error
-      setLessons((prevLessons) =>
-        prevLessons.map((l) => (l.id === lesson.id ? { ...l, isPublished: lesson.isPublished } : l)),
-      )
-      notifyError('Unable to update lesson', error instanceof Error ? error.message : undefined)
-    }
-  }
 
   const handleDelete = async (lesson: Lesson) => {
     const confirmed = await confirmAction({
@@ -252,7 +220,6 @@ export function LessonsPage() {
           {
             title: values.title,
             order: values.order,
-            isPublished: values.isPublished,
           },
         )
         notifySuccess('Lesson updated successfully')
@@ -263,7 +230,6 @@ export function LessonsPage() {
           unitId: values.unitId,
           title: values.title,
           order: values.order,
-          isPublished: values.isPublished,
         })
         notifySuccess('Lesson created successfully')
         refreshLessons() // Refresh cache
@@ -289,21 +255,6 @@ export function LessonsPage() {
       header: 'Sections',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.sectionCount}</span>,
-    },
-    {
-      key: 'isPublished',
-      header: 'Published',
-      align: 'center',
-      render: (row) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Switch 
-            checked={row.isPublished ?? false} 
-            onCheckedChange={() => {
-              handleTogglePublish(row)
-            }}
-          />
-        </div>
-      ),
     },
   ]
 
@@ -410,20 +361,6 @@ export function LessonsPage() {
                     Order is automatically calculated based on existing lessons in this unit.
                   </p>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="isPublished"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Publish to Mobile App</FormLabel>
-                    <p className="text-xs text-muted-foreground">Only published lessons appear to students.</p>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
                 </FormItem>
               )}
             />

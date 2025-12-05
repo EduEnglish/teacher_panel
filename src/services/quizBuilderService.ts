@@ -59,7 +59,6 @@ export async function createQuizWithQuestions(
     id: `${quizDocRef.id}_q${index + 1}`,
     quizId: quizDocRef.id,
     order: q.order ?? index + 1,
-    isPublished: q.isPublished ?? false,
     createdAt: null,
     updatedAt: null,
   } as Question))
@@ -144,7 +143,6 @@ export async function updateQuizWithQuestions(
     id: `${quizId}_q${index + 1}`,
     quizId: quizId,
     order: q.order ?? index + 1,
-    isPublished: q.isPublished ?? false,
     createdAt: null,
     updatedAt: null,
   } as Question))

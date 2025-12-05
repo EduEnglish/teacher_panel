@@ -46,6 +46,7 @@ export interface Section extends Omit<BaseEntity, 'status'> {
   title: string
   description?: string
   isPublished: boolean
+  videoLink?: string // Optional YouTube video link
 }
 
 export interface Quiz extends Omit<BaseEntity, 'status'> {
@@ -70,7 +71,6 @@ export interface QuestionBase extends BaseEntity {
   explanation?: string
   order: number
   difficulty?: 'easy' | 'medium' | 'hard'
-  isPublished: boolean
   points: number // Required points field (defaults to 1)
 }
 

@@ -120,7 +120,6 @@ export function QuizzesPage() {
       sectionId: '',
       title: '',
       quizType: 'fill-in',
-      isPublished: false,
     },
   })
 
@@ -134,7 +133,6 @@ export function QuizzesPage() {
         sectionId: editingQuiz.sectionId,
         title: editingQuiz.title,
         quizType: editingQuiz.quizType,
-        isPublished: editingQuiz.isPublished,
       })
     } else {
       form.reset({
@@ -144,7 +142,6 @@ export function QuizzesPage() {
         sectionId: sectionId || '',
         title: '',
         quizType: 'fill-in',
-        isPublished: false,
       })
     }
   }, [editingQuiz, gradeId, unitId, lessonId, sectionId, form])
@@ -183,57 +180,6 @@ export function QuizzesPage() {
     }
   }
 
-  const handlePublishToggle = async (quiz: Quiz) => {
-    if (!user?.uid) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!quiz.gradeId || !quiz.unitId || !quiz.lessonId || !quiz.sectionId) {
-      notifyError('Invalid quiz', 'Quiz missing required IDs')
-      return
-    }
-    
-    // Optimistic update
-    const newPublishedState = !quiz.isPublished
-    setQuizzes((prevQuizzes) =>
-      prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: newPublishedState } : q)),
-    )
-    
-    try {
-      // Get current questions
-      const result = await getQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id)
-      if (!result) {
-        // Revert on error
-        setQuizzes((prevQuizzes) =>
-          prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: quiz.isPublished } : q)),
-        )
-        notifyError('Quiz not found', 'Unable to load quiz')
-        return
-      }
-
-      // Update with same questions, just toggle published status
-      await updateQuizWithQuestions(
-        quiz.gradeId,
-        quiz.unitId,
-        quiz.lessonId,
-        quiz.sectionId,
-        quiz.id,
-        { isPublished: newPublishedState },
-        result.questions.map((q) => ({
-          ...q,
-          quizId: undefined, // Remove quizId for update
-        })),
-        user.uid,
-      )
-      notifySuccess(newPublishedState ? 'Quiz published' : 'Quiz unpublished')
-    } catch (error) {
-      // Revert on error
-      setQuizzes((prevQuizzes) =>
-        prevQuizzes.map((q) => (q.id === quiz.id ? { ...q, isPublished: quiz.isPublished } : q)),
-      )
-      notifyError('Unable to update quiz status', error instanceof Error ? error.message : undefined)
-    }
-  }
 
   const onSubmit = form.handleSubmit(async (values) => {
     if (!user?.uid) {
@@ -288,7 +234,6 @@ export function QuizzesPage() {
           {
             title: values.title,
             quizType: values.quizType,
-            isPublished: values.isPublished,
           },
           result?.questions.map((q) => ({
             ...q,
@@ -335,7 +280,6 @@ export function QuizzesPage() {
             sectionId: sectionId,
             title: values.title,
             quizType: values.quizType,
-            isPublished: values.isPublished,
           } as Omit<Quiz, 'id' | 'createdAt' | 'updatedAt'>,
           [], // Start with no questions
           user.uid,
@@ -405,21 +349,6 @@ export function QuizzesPage() {
       header: 'Questions',
       align: 'center',
       render: (row) => <span className="font-semibold text-foreground">{row.questionCount}</span>,
-    },
-    {
-      key: 'isPublished',
-      header: 'Published',
-      align: 'center',
-      render: (row) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Switch 
-            checked={row.isPublished ?? false} 
-            onCheckedChange={() => {
-              handlePublishToggle(row)
-            }}
-          />
-        </div>
-      ),
     },
   ]
 
@@ -534,20 +463,6 @@ export function QuizzesPage() {
                     <Input placeholder="e.g., Grammar Challenge" {...field} />
                   </FormControl>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              name="isPublished"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Publish Quiz</FormLabel>
-                    <p className="text-xs text-muted-foreground">Only published quizzes appear to learners.</p>
-                  </div>
-                  <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  </FormControl>
                 </FormItem>
               )}
             />

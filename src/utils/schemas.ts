@@ -31,7 +31,6 @@ export const lessonSchema = z.object({
     message: 'Please select a lesson title',
   }),
   order: z.number().min(1, 'Order must be greater than zero'),
-  isPublished: z.boolean().default(false),
 })
 
 export const sectionSchema = z.object({
@@ -40,7 +39,13 @@ export const sectionSchema = z.object({
   unitId: z.string().min(1, 'Unit is required'),
   lessonId: z.string().min(1, 'Lesson is required'),
   title: z.string().min(2, 'Section title must be at least 2 characters'),
-  isPublished: z.boolean().default(false),
+  videoLink: z
+    .string()
+    .refine(
+      (val) => !val || val.trim() === '' || /^https?:\/\/.+/.test(val),
+      { message: 'Please enter a valid URL' },
+    )
+    .optional(),
 })
 
 export const quizSchema = z.object({
@@ -51,7 +56,6 @@ export const quizSchema = z.object({
   sectionId: z.string().min(1, 'Section is required'),
   title: z.string().min(2, 'Quiz title must be at least 2 characters'),
   quizType: z.enum(quizTypes),
-  isPublished: z.boolean().default(false),
 })
 
 export const fillInQuestionSchema = z.object({
@@ -71,7 +75,6 @@ export const fillInQuestionSchema = z.object({
   type: z.literal('fill-in'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
-  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -83,7 +86,6 @@ export const spellingQuestionSchema = z.object({
   type: z.literal('spelling'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
-  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -103,7 +105,6 @@ export const matchingQuestionSchema = z.object({
   type: z.literal('matching'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
-  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 
@@ -120,7 +121,6 @@ export const orderWordsQuestionSchema = z.object({
   type: z.literal('order-words'),
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
-  isPublished: z.boolean().default(false),
   status: statusSchema.default('active'),
 })
 

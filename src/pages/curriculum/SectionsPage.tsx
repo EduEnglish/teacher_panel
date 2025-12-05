@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Play } from 'lucide-react'
+import { deleteField } from 'firebase/firestore'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
@@ -83,7 +84,6 @@ export function SectionsPage() {
       unitId: '',
       lessonId: '',
       title: '',
-      isPublished: false,
     },
   })
 
@@ -99,7 +99,7 @@ export function SectionsPage() {
         unitId: editingSection.unitId,
         lessonId: editingSection.lessonId,
         title: editingSection.title,
-        isPublished: editingSection.isPublished ?? false,
+        videoLink: editingSection.videoLink || '',
       })
     } else {
       form.reset({
@@ -107,7 +107,7 @@ export function SectionsPage() {
         unitId: unitId || '',
         lessonId: lessonId || '',
         title: '',
-        isPublished: false,
+        videoLink: '',
       })
     }
   }, [editingSection, gradeId, unitId, lessonId, form])
@@ -142,35 +142,6 @@ export function SectionsPage() {
     setIsModalOpen(true)
   }
 
-  const handleTogglePublish = async (section: Section) => {
-    if (!user?.uid) {
-      notifyError('Missing admin session', 'Please sign in again.')
-      return
-    }
-    if (!section.gradeId || !section.unitId || !section.lessonId) {
-      notifyError('Invalid section', 'Section missing required IDs')
-      return
-    }
-    
-    // Optimistic update
-    const newPublishedState = !section.isPublished
-    setSections((prevSections) =>
-      prevSections.map((s) => (s.id === section.id ? { ...s, isPublished: newPublishedState } : s)),
-    )
-    
-    try {
-      await hierarchicalSectionService.update(section.gradeId, section.unitId, section.lessonId, section.id, {
-        isPublished: newPublishedState,
-      })
-      notifySuccess(newPublishedState ? 'Section published' : 'Section unpublished')
-    } catch (error) {
-      // Revert on error
-      setSections((prevSections) =>
-        prevSections.map((s) => (s.id === section.id ? { ...s, isPublished: section.isPublished } : s)),
-      )
-      notifyError('Unable to update section', error instanceof Error ? error.message : undefined)
-    }
-  }
 
   const handleDelete = async (section: Section) => {
     const confirmed = await confirmAction({
@@ -226,15 +197,24 @@ export function SectionsPage() {
           notifyError('Invalid section', 'Section missing required IDs')
           return
         }
+        // Prepare update data
+        const trimmedVideoLink = values.videoLink?.trim()
+        const updateData: Record<string, unknown> = {
+          title: values.title,
+        }
+        // Only include videoLink if it has a value, otherwise use deleteField to remove it
+        if (trimmedVideoLink && trimmedVideoLink.length > 0) {
+          updateData.videoLink = trimmedVideoLink
+        } else {
+          // Use deleteField to remove the field from Firestore
+          updateData.videoLink = deleteField()
+        }
         await hierarchicalSectionService.update(
           editingSection.gradeId,
           editingSection.unitId,
           editingSection.lessonId,
           editingSection.id,
-          {
-            title: values.title,
-            isPublished: values.isPublished,
-          },
+          updateData as Partial<Omit<Section, 'id' | 'createdAt' | 'updatedAt'>>,
         )
         notifySuccess('Section updated successfully')
         refreshSections() // Refresh cache
@@ -243,13 +223,19 @@ export function SectionsPage() {
           notifyError('Missing IDs', 'Grade, Unit, and Lesson IDs are required')
           return
         }
-        await hierarchicalSectionService.create(gradeId, unitId, lessonId, {
+        // Prepare create data - only include videoLink if it has a value
+        const trimmedVideoLink = values.videoLink?.trim()
+        const createData: Omit<Section, 'id' | 'createdAt' | 'updatedAt'> = {
           gradeId: gradeId,
           unitId: unitId,
           lessonId: lessonId,
           title: values.title,
-          isPublished: values.isPublished,
-        })
+        }
+        // Only include videoLink if it has a value
+        if (trimmedVideoLink && trimmedVideoLink.length > 0) {
+          createData.videoLink = trimmedVideoLink
+        }
+        await hierarchicalSectionService.create(gradeId, unitId, lessonId, createData)
         notifySuccess('Section created successfully')
         refreshSections() // Refresh cache
       }
@@ -276,17 +262,24 @@ export function SectionsPage() {
       render: (row) => <span className="font-semibold text-foreground">{row.quizCount}</span>,
     },
     {
-      key: 'isPublished',
-      header: 'Published',
+      key: 'videoLink',
+      header: 'Video',
       align: 'center',
       render: (row) => (
         <div onClick={(e) => e.stopPropagation()}>
-          <Switch 
-            checked={row.isPublished ?? false} 
-            onCheckedChange={() => {
-              handleTogglePublish(row)
-            }}
-          />
+          {row.videoLink ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 group"
+              onClick={() => window.open(row.videoLink, '_blank', 'noopener,noreferrer')}
+              title="Watch Video"
+            >
+              <Play className="h-4 w-4 text-primary group-hover:text-white" />
+            </Button>
+          ) : (
+            <span className="text-muted-foreground text-sm">—</span>
+          )}
         </div>
       ),
     },
@@ -371,16 +364,21 @@ export function SectionsPage() {
               )}
             />
             <FormField
-              name="isPublished"
+              name="videoLink"
               render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border border-border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Publish to Mobile App</FormLabel>
-                    <p className="text-xs text-muted-foreground">Only published sections appear to students.</p>
-                  </div>
+                <FormItem>
+                  <FormLabel>YouTube Video Link (Optional)</FormLabel>
                   <FormControl>
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    <Input 
+                      placeholder="https://www.youtube.com/watch?v=..." 
+                      {...field} 
+                      type="url"
+                    />
                   </FormControl>
+                  <p className="text-xs text-muted-foreground">
+                    Add an educational video link that will be displayed to students.
+                  </p>
+                  <FormMessage />
                 </FormItem>
               )}
             />
