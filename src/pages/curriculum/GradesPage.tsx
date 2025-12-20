@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
@@ -48,10 +48,41 @@ export function GradesPage() {
     resolver: zodResolver(gradeSchema),
     defaultValues: {
       name: '',
-      description: '',
+      description: undefined,
       isPublished: false,
     },
   })
+
+  // Watch grade name to auto-select description
+  const gradeName = useWatch({
+    control: form.control,
+    name: 'name',
+  })
+
+  // Map grade to age range
+  const getAgeRangeForGrade = (grade: string): string | undefined => {
+    const gradeMap: Record<string, string> = {
+      'Grade 5': 'Ages 10–11 years',
+      'Grade 6': 'Ages 11–12 years',
+      'Grade 7': 'Ages 12–13 years',
+      'Grade 8': 'Ages 13–14 years',
+      'Grade 9': 'Ages 14–15 years',
+      'Grade 10': 'Ages 15–16 years',
+      'Grade 11': 'Ages 16–17 years',
+      'Grade 12': 'Ages 17–18 years',
+    }
+    return gradeMap[grade]
+  }
+
+  // Auto-set description when grade name changes
+  useEffect(() => {
+    if (gradeName) {
+      const ageRange = getAgeRangeForGrade(gradeName)
+      if (ageRange) {
+        form.setValue('description', ageRange, { shouldValidate: false })
+      }
+    }
+  }, [gradeName, form])
 
   useEffect(() => {
     setPageTitle('Grade Management')
@@ -73,16 +104,18 @@ export function GradesPage() {
 
   useEffect(() => {
     if (editingGrade) {
+      // When editing, use the stored description or auto-set based on grade name
+      const description = editingGrade.description || getAgeRangeForGrade(editingGrade.name)
       form.reset({
         id: editingGrade.id,
         name: editingGrade.name,
-        description: editingGrade.description ?? '',
+        description: description || undefined,
         isPublished: editingGrade.isPublished ?? false,
       })
     } else {
       form.reset({
         name: '',
-        description: '',
+        description: undefined,
         isPublished: false,
       })
     }
@@ -265,9 +298,23 @@ export function GradesPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Grade Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., Grade 4" {...field} />
-                  </FormControl>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select grade name" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Grade 5">Grade 5</SelectItem>
+                      <SelectItem value="Grade 6">Grade 6</SelectItem>
+                      <SelectItem value="Grade 7">Grade 7</SelectItem>
+                      <SelectItem value="Grade 8">Grade 8</SelectItem>
+                      <SelectItem value="Grade 9">Grade 9</SelectItem>
+                      <SelectItem value="Grade 10">Grade 10</SelectItem>
+                      <SelectItem value="Grade 11">Grade 11</SelectItem>
+                      <SelectItem value="Grade 12">Grade 12</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -276,10 +323,28 @@ export function GradesPage() {
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Short Description (max 30 characters)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Optional context for this grade" maxLength={30} {...field} />
-                  </FormControl>
+                  <FormLabel>Short Description</FormLabel>
+                  <Select 
+                    onValueChange={field.onChange} 
+                    value={field.value || undefined}
+                    disabled={true}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select age range (optional)" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="Ages 10–11 years">Ages 10–11 years</SelectItem>
+                      <SelectItem value="Ages 11–12 years">Ages 11–12 years</SelectItem>
+                      <SelectItem value="Ages 12–13 years">Ages 12–13 years</SelectItem>
+                      <SelectItem value="Ages 13–14 years">Ages 13–14 years</SelectItem>
+                      <SelectItem value="Ages 14–15 years">Ages 14–15 years</SelectItem>
+                      <SelectItem value="Ages 15–16 years">Ages 15–16 years</SelectItem>
+                      <SelectItem value="Ages 16–17 years">Ages 16–17 years</SelectItem>
+                      <SelectItem value="Ages 17–18 years">Ages 17–18 years</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
