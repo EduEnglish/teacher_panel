@@ -447,6 +447,7 @@ export function QuestionsPage() {
               onDelete={handleDeleteQuestion}
               isSaving={isSavingQuestion}
               editingQuestion={editingQuestion}
+              lessonTitle={currentLesson?.title}
             />
           )}
         </div>

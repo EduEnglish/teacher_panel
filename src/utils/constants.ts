@@ -35,8 +35,9 @@ export const lessonTitleOptions = [
   'Matching',
   'Fill in the blanks',
   'Spelling',
-  'Listening',
-  'Reading',
+  'Passages',
+  'Literature',
+  'Composition',
 ] as const
 
 export const quizTypeOptions = [

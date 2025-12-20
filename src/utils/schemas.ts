@@ -22,7 +22,7 @@ export const unitSchema = z.object({
   isPublished: z.boolean().default(false),
 })
 
-const lessonTitleOptions = ['Grammar', 'Matching', 'Fill in the blanks', 'Spelling', 'Listening', 'Reading'] as const
+const lessonTitleOptions = ['Grammar', 'Matching', 'Fill in the blanks', 'Spelling', 'Passages', 'Literature', 'Composition'] as const
 
 export const lessonSchema = z.object({
   id: z.string().optional(),
@@ -32,6 +32,16 @@ export const lessonSchema = z.object({
     message: 'Please select a lesson title',
   }),
   order: z.number().min(1, 'Order must be greater than zero'),
+})
+
+const listItemSchema = z.object({
+  english: z.string().min(1, 'English text is required'),
+  arabic: z.string().min(1, 'Arabic text is required'),
+  imageUrl: z.string().url().optional().or(z.literal('')),
+})
+
+const sectionListSchema = z.object({
+  items: z.array(listItemSchema).min(1, 'At least one list item is required'),
 })
 
 export const sectionSchema = z.object({
@@ -47,6 +57,7 @@ export const sectionSchema = z.object({
       { message: 'Please enter a valid URL' },
     )
     .optional(),
+  lists: sectionListSchema.optional(),
 })
 
 export const quizSchema = z.object({

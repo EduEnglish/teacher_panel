@@ -2,7 +2,7 @@ import type { Timestamp } from 'firebase/firestore'
 
 export type EntityStatus = 'active' | 'inactive'
 export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words'
-export type LessonType = 'Grammar' | 'Vocabulary' | 'Reading' | 'Listening'
+export type LessonType = 'Grammar' | 'Vocabulary' | 'Passages' | 'Literature' | 'Composition'
 export type NotificationAudience = 'all' | 'grade' | 'unit' | 'lesson' | 'custom'
 export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled'
 export type NotificationChannel = 'in-app' | 'email' | 'push'
@@ -39,6 +39,16 @@ export interface Lesson extends Omit<BaseEntity, 'status'> {
   order: number
 }
 
+export interface ListItem {
+  english: string
+  arabic: string
+  imageUrl?: string // Optional image URL from Firebase Storage
+}
+
+export interface SectionList {
+  items: ListItem[]
+}
+
 export interface Section extends Omit<BaseEntity, 'status'> {
   gradeId: string
   unitId: string
@@ -46,6 +56,7 @@ export interface Section extends Omit<BaseEntity, 'status'> {
   title: string
   description?: string
   videoLink?: string // Optional YouTube video link
+  lists?: SectionList // Optional list with items
 }
 
 export interface Quiz extends Omit<BaseEntity, 'status'> {

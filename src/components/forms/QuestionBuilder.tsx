@@ -28,6 +28,7 @@ type QuestionBuilderProps = {
   onDelete: (question: Question) => Promise<void>
   isSaving: boolean
   editingQuestion?: Question | null
+  lessonTitle?: string
 }
 
 type QuestionInput =
@@ -37,7 +38,7 @@ type QuestionInput =
   | OrderWordsQuestionFormValues
 
 
-export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving, editingQuestion: externalEditingQuestion }: QuestionBuilderProps) {
+export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving, editingQuestion: externalEditingQuestion, lessonTitle }: QuestionBuilderProps) {
   // onDelete is kept for interface compatibility but not used since questions list was removed
   void onDelete
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
@@ -45,6 +46,11 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   
   // Use external editingQuestion if provided, otherwise use internal state
   const currentEditingQuestion = externalEditingQuestion !== undefined ? externalEditingQuestion : editingQuestion
+
+  // Check if this is a Passages or Literature lesson
+  const isPassages = lessonTitle?.toLowerCase().trim() === 'passages'
+  const isLiterature = lessonTitle?.toLowerCase().trim() === 'literature'
+  const isPassagesOrLiterature = isPassages || isLiterature
 
   const schema = useMemo(() => {
     switch (quiz.quizType) {
@@ -173,15 +179,41 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                 name="prompt"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{isFillIn ? 'Question with blanks' : 'Question Prompt'}</FormLabel>
+                    <FormLabel>
+                      {isFillIn 
+                        ? (isPassages 
+                            ? 'Passage' 
+                            : isLiterature 
+                              ? 'Literature Text' 
+                              : 'Question with blanks')
+                        : 'Question Prompt'}
+                    </FormLabel>
                     <FormControl>
                       <Textarea 
-                        placeholder={isFillIn ? "e.g., The cat sat on the ___" : "Describe the question context..."} 
-                        rows={isFillIn ? 2 : 3} 
+                        placeholder={
+                          isFillIn 
+                            ? (isPassages 
+                                ? "e.g., The sun was shining brightly. Sarah walked to the park. She saw many children playing." 
+                                : isLiterature
+                                  ? "e.g., Once upon a time, in a faraway kingdom, there lived a wise king who loved his people dearly."
+                                  : "e.g., The cat sat on the ___")
+                            : "Describe the question context..."
+                        } 
+                        rows={isFillIn ? (isPassagesOrLiterature ? 4 : 2) : 3} 
                         {...field} 
                       />
                     </FormControl>
                     <FormMessage />
+                    {isFillIn && isPassages && (
+                      <p className="text-xs text-muted-foreground">
+                        Enter the full passage. Students will select answers from multiple choice options below.
+                      </p>
+                    )}
+                    {isFillIn && isLiterature && (
+                      <p className="text-xs text-muted-foreground">
+                        Enter the full literature text. Students will select answers from multiple choice options below.
+                      </p>
+                    )}
                   </FormItem>
                 )}
               />
@@ -190,14 +222,14 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
             {isFillIn && (
               <div className="space-y-5 border-t border-border pt-5">
                 <div className="flex items-center justify-between">
-                  <FormLabel>Blanks</FormLabel>
+                  <FormLabel>{isPassagesOrLiterature ? 'Answer Options' : 'Blanks'}</FormLabel>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
                     onClick={() => blanksFieldArray.append({ id: nanoid(), answer: '', options: [] } as never)}
                   >
-                    Add Blank
+                    {isPassagesOrLiterature ? 'Add Answer Option' : 'Add Blank'}
                   </Button>
                 </div>
                 
@@ -207,7 +239,9 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                   return (
                     <div key={fieldItem.id} className="space-y-4 border border-border rounded-lg p-4">
                       <div className="flex items-center justify-between">
-                        <FormLabel className="text-base font-semibold">Blank {blankIndex + 1}</FormLabel>
+                        <FormLabel className="text-base font-semibold">
+                          {isPassagesOrLiterature ? `Answer Option ${blankIndex + 1}` : `Blank ${blankIndex + 1}`}
+                        </FormLabel>
                         <Button
                           type="button"
                           variant="ghost"
@@ -223,7 +257,11 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                         name={`blanks.${blankIndex}.answer` as const}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Correct Answer for Blank {blankIndex + 1}</FormLabel>
+                            <FormLabel>
+                              {isPassagesOrLiterature 
+                                ? `Correct Answer for Option ${blankIndex + 1}` 
+                                : `Correct Answer for Blank ${blankIndex + 1}`}
+                            </FormLabel>
                             <FormControl>
                               <Input {...field} placeholder="Enter correct answer" />
                             </FormControl>
@@ -234,7 +272,10 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                       
                       {/* Options for this blank */}
                       <div className="space-y-3 border-t border-border pt-4">
-                        <div className="flex items-center justify-end">
+                        <div className="flex items-center justify-between">
+                          <FormLabel className="text-sm font-medium">
+                            {isPassagesOrLiterature ? 'Multiple Choice Options' : 'Options'}
+                          </FormLabel>
                           <Button
                             type="button"
                             variant="outline"
@@ -244,7 +285,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                               form.setValue(`blanks.${blankIndex}.options`, [...current, ''])
                             }}
                           >
-                            Options
+                            Add Option
                           </Button>
                         </div>
                         
@@ -281,7 +322,9 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                         
                         {currentOptions.length === 0 && (
                           <p className="text-xs text-muted-foreground italic">
-                            No options added. Students will type their answer freely.
+                            {isPassagesOrLiterature 
+                              ? "Add multiple choice options. Students will select from these options."
+                              : "No options added. Students will type their answer freely."}
                           </p>
                         )}
                       </div>
