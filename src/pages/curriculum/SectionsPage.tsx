@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ChevronRight, Play, Upload, X, Loader2, Maximize2 } from 'lucide-react'
 import { deleteField } from 'firebase/firestore'
@@ -40,6 +40,14 @@ export function SectionsPage() {
   
   const [sections, setSections] = useState<Section[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const isMountedRef = useRef(true)
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Redirect if params are missing
   useEffect(() => {
@@ -156,6 +164,22 @@ export function SectionsPage() {
     setIsModalOpen(true)
   }
 
+  const handleClose = () => {
+    setIsModalOpen(false)
+    setEditingSection(null)
+    // Reset form to default values to clear any incomplete list items
+    form.reset({
+      gradeId: gradeId || '',
+      unitId: unitId || '',
+      lessonId: lessonId || '',
+      title: '',
+      videoLink: '',
+      lists: { items: [] },
+    })
+    // Reset form validation state
+    form.clearErrors()
+  }
+
 
   const handleDelete = async (section: Section) => {
     const confirmed = await confirmAction({
@@ -181,16 +205,23 @@ export function SectionsPage() {
     }
   }
 
-  const onSubmit = form.handleSubmit(async (values) => {
+  // Handler function that does the actual submission
+  const handleSubmitData = async (values: SectionFormValues) => {
     if (!user?.uid) {
       notifyError('Missing admin session', 'Please sign in again.')
       return
     }
+    
     try {
       if (!values.gradeId || !values.unitId || !values.lessonId) {
         notifyError('Grade, Unit, and Lesson required', 'Please select all required fields')
         return
       }
+
+      // Filter out empty/incomplete list items (items without both english and arabic)
+      const filteredListItems = values.lists?.items?.filter(
+        (item) => item.english?.trim() && item.arabic?.trim()
+      ) || []
 
       // Check for duplicate section title in the same grade + unit + lesson
       const duplicateSection = sections.find(
@@ -223,9 +254,9 @@ export function SectionsPage() {
           // Use deleteField to remove the field from Firestore
           updateData.videoLink = deleteField()
         }
-        // Handle lists
-        if (values.lists && values.lists.items.length > 0) {
-          updateData.lists = values.lists
+        // Handle lists - use filtered items
+        if (filteredListItems.length > 0) {
+          updateData.lists = { items: filteredListItems }
         } else {
           updateData.lists = deleteField()
         }
@@ -236,8 +267,15 @@ export function SectionsPage() {
           editingSection.id,
           updateData as Partial<Omit<Section, 'id' | 'createdAt' | 'updatedAt'>>,
         )
-        notifySuccess('Section updated successfully')
-        refreshSections() // Refresh cache
+        
+        // Close modal and reset form
+        handleClose()
+        
+        // Only show notification if component is still mounted
+        if (isMountedRef.current) {
+          notifySuccess('Section updated successfully')
+          refreshSections() // Refresh cache
+        }
       } else {
         if (!gradeId || !unitId || !lessonId) {
           notifyError('Missing IDs', 'Grade, Unit, and Lesson IDs are required')
@@ -255,19 +293,46 @@ export function SectionsPage() {
         if (trimmedVideoLink && trimmedVideoLink.length > 0) {
           createData.videoLink = trimmedVideoLink
         }
-        // Include lists if they exist
-        if (values.lists && values.lists.items.length > 0) {
-          createData.lists = values.lists
+        // Include lists if they exist - use filtered items
+        if (filteredListItems.length > 0) {
+          createData.lists = { items: filteredListItems }
         }
         await hierarchicalSectionService.create(gradeId, unitId, lessonId, createData)
-        notifySuccess('Section created successfully')
-        refreshSections() // Refresh cache
+        
+        // Close modal and reset form
+        handleClose()
+        
+        // Only show notification if component is still mounted
+        if (isMountedRef.current) {
+          notifySuccess('Section created successfully')
+          refreshSections() // Refresh cache
+        }
       }
-      setIsModalOpen(false)
     } catch (error) {
-      notifyError('Unable to save section', error instanceof Error ? error.message : undefined)
+      // Only show error if component is still mounted
+      if (isMountedRef.current) {
+        notifyError('Unable to save section', error instanceof Error ? error.message : undefined)
+      }
+      console.error('Section save error:', error)
     }
-  })
+  }
+
+  // Wrapper that filters empty list items before validation, then uses handleSubmit for proper form state
+  const onSubmit = async () => {
+    // Get current form values
+    const rawValues = form.getValues()
+    
+    // Filter out empty/incomplete list items BEFORE validation
+    const filteredListItems = rawValues.lists?.items?.filter(
+      (item) => item.english?.trim() && item.arabic?.trim()
+    ) || []
+
+    // Update form with filtered list items before validation
+    form.setValue('lists.items', filteredListItems, { shouldValidate: false })
+    
+    // Now use handleSubmit to validate and submit (this ensures isSubmitting state works correctly)
+    form.handleSubmit(handleSubmitData)()
+  }
 
   const columns: Array<DataTableColumn<SectionTableRow>> = [
     { 
@@ -366,7 +431,7 @@ export function SectionsPage() {
 
       <FormModal
         open={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleClose}
         title={editingSection ? 'Edit Section' : 'Add Section'}
         description="Sections define the quiz experience inside a lesson."
         onSubmit={onSubmit}

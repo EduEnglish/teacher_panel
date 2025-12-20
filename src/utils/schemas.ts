@@ -41,8 +41,8 @@ const listItemSchema = z.object({
 })
 
 const sectionListSchema = z.object({
-  items: z.array(listItemSchema).min(1, 'At least one list item is required'),
-})
+  items: z.array(listItemSchema),
+}).optional()
 
 export const sectionSchema = z.object({
   id: z.string().optional(),
