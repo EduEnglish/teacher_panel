@@ -8,6 +8,7 @@ import type {
   FillInQuestion,
   MatchingQuestion,
   OrderWordsQuestion,
+  CompositionQuestion,
   Question,
   Quiz,
   SpellingQuestion,
@@ -20,7 +21,7 @@ import { mapToStudentQuizType, type StudentQuizType } from './quizTypeMapper'
 export interface StudentAppQuestion {
   id: string
   prompt: string
-  type: 'fill_blank' | 'spelling' | 'matching' | 'order_words'
+  type: 'fill_blank' | 'spelling' | 'matching' | 'order_words' | 'composition'
   options?: string[] // Optional, for fill_blank multiple choice (for backward compatibility)
   blankOptions?: string[][] // Per-blank options: blankOptions[0] = options for blank 1, blankOptions[1] = options for blank 2, etc.
   answers: string[] // Array of answers
@@ -138,6 +139,24 @@ function transformOrderWordsQuestion(question: OrderWordsQuestion): StudentAppQu
 }
 
 /**
+ * Transform Composition question to student app format
+ * Teacher: { prompt: "Question title" }
+ * Student: { prompt: "Question title", answers: [] }
+ */
+function transformCompositionQuestion(question: CompositionQuestion): StudentAppQuestion {
+  return {
+    id: question.id,
+    prompt: question.prompt,
+    type: 'composition',
+    answers: [], // No predefined answers - evaluated by AI
+    pairs: undefined,
+    order: undefined,
+    hint: question.explanation,
+    points: question.points ?? 1,
+  }
+}
+
+/**
  * Transform teacher panel question to student app format
  */
 export function transformQuestion(question: Question): StudentAppQuestion {
@@ -150,6 +169,8 @@ export function transformQuestion(question: Question): StudentAppQuestion {
       return transformMatchingQuestion(question)
     case 'order-words':
       return transformOrderWordsQuestion(question)
+    case 'composition':
+      return transformCompositionQuestion(question)
     default: {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const questionType = (question as any).type

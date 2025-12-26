@@ -10,7 +10,7 @@ import { PageLoader } from '@/components/feedback/PageLoader'
 import { getQuizWithQuestions, updateQuizWithQuestions } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
 import type { Question, Quiz } from '@/types/models'
-import type { FillInQuestionFormValues, SpellingQuestionFormValues, MatchingQuestionFormValues, OrderWordsQuestionFormValues } from '@/utils/schemas'
+import type { FillInQuestionFormValues, SpellingQuestionFormValues, MatchingQuestionFormValues, OrderWordsQuestionFormValues, CompositionQuestionFormValues } from '@/utils/schemas'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -25,6 +25,8 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
       return 'matching'
     case 'order-words':
       return 'order-words'
+    case 'composition':
+      return 'composition'
     default:
       return 'fill-in'
   }
@@ -199,7 +201,7 @@ export function QuestionsPage() {
     }
   }
 
-  const handleCreateQuestion = async (values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues) => {
+  const handleCreateQuestion = async (values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
     if (!user?.uid || !quizId || !currentQuiz) {
       notifyError('Missing quiz', 'Quiz ID is missing')
       return
@@ -268,7 +270,7 @@ export function QuestionsPage() {
     }
   }
 
-  const handleUpdateQuestion = async (id: string, values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues) => {
+  const handleUpdateQuestion = async (id: string, values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
     if (!user?.uid || !quizId || !currentQuiz) {
       notifyError('Missing quiz', 'Quiz ID is missing')
       return

@@ -45,6 +45,7 @@ export const quizTypeOptions = [
   { value: 'spelling', label: 'Spelling' },
   { value: 'matching', label: 'Matching' },
   { value: 'order-words', label: 'Order Words' },
+  { value: 'composition', label: 'Composition' },
 ] as const
 
 export const notificationAudienceOptions = [

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // const lessonTypes = ['Grammar', 'Vocabulary', 'Reading', 'Listening'] as const
-const quizTypes = ['fill-in', 'spelling', 'matching', 'order-words'] as const
+const quizTypes = ['fill-in', 'spelling', 'matching', 'order-words', 'composition'] as const
 const notificationAudienceTypes = ['all', 'grade', 'unit', 'lesson', 'custom'] as const
 const notificationChannels = ['in-app', 'email', 'push'] as const
 const notificationStatuses = ['draft', 'scheduled', 'sent', 'cancelled'] as const
@@ -136,6 +136,16 @@ export const orderWordsQuestionSchema = z.object({
   status: statusSchema.default('active'),
 })
 
+export const compositionQuestionSchema = z.object({
+  id: z.string().optional(),
+  quizId: z.string().min(1, 'Quiz is required'),
+  prompt: z.string().min(5, 'Question title must be at least 5 characters'),
+  type: z.literal('composition'),
+  order: z.number().min(1),
+  points: z.number().min(1, 'Points must be at least 1').default(1),
+  status: statusSchema.default('active'),
+})
+
 export const adminSettingsSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(2),
@@ -199,6 +209,7 @@ export type FillInQuestionFormValues = z.infer<typeof fillInQuestionSchema>
 export type SpellingQuestionFormValues = z.infer<typeof spellingQuestionSchema>
 export type MatchingQuestionFormValues = z.infer<typeof matchingQuestionSchema>
 export type OrderWordsQuestionFormValues = z.infer<typeof orderWordsQuestionSchema>
+export type CompositionQuestionFormValues = z.infer<typeof compositionQuestionSchema>
 export type AdminSettingsFormValues = z.infer<typeof adminSettingsSchema>
 export type NotificationFormValues = z.infer<typeof notificationSchema>
 

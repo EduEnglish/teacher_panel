@@ -13,10 +13,12 @@ import {
   matchingQuestionSchema,
   orderWordsQuestionSchema,
   spellingQuestionSchema,
+  compositionQuestionSchema,
   type FillInQuestionFormValues,
   type MatchingQuestionFormValues,
   type OrderWordsQuestionFormValues,
   type SpellingQuestionFormValues,
+  type CompositionQuestionFormValues,
 } from '@/utils/schemas'
 import type { Question, Quiz, SpellingQuestion } from '@/types/models'
 
@@ -36,6 +38,7 @@ type QuestionInput =
   | SpellingQuestionFormValues
   | MatchingQuestionFormValues
   | OrderWordsQuestionFormValues
+  | CompositionQuestionFormValues
 
 
 export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete, isSaving, editingQuestion: externalEditingQuestion, lessonTitle }: QuestionBuilderProps) {
@@ -61,6 +64,9 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
       case 'matching':
         return matchingQuestionSchema
       case 'order-words':
+        return orderWordsQuestionSchema
+      case 'composition':
+        return compositionQuestionSchema
       default:
         return orderWordsQuestionSchema
     }
@@ -96,7 +102,12 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
 
   useEffect(() => {
     const values = currentEditingQuestion ? mapQuestionToValues(currentEditingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
-    form.reset(values)
+    // Ensure type always matches quiz type
+    const valuesWithCorrectType = {
+      ...values,
+      type: getQuestionTypeFromQuizType(quiz.quizType),
+    }
+    form.reset(valuesWithCorrectType)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentEditingQuestion, quiz.id, quiz.quizType])
 
@@ -149,6 +160,8 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
       return 'matching'
     case 'order-words':
       return 'order-words'
+    case 'composition':
+      return 'composition'
     default:
       return 'fill-in'
   }
@@ -159,6 +172,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
   const isSpelling = quiz.quizType === 'spelling'
   const isMatching = quiz.quizType === 'matching'
   const isOrderWords = quiz.quizType === 'order-words'
+  const isComposition = quiz.quizType === 'composition'
 
   return (
     <Card className="border-none shadow-sm">
@@ -212,6 +226,11 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                     {isFillIn && isLiterature && (
                       <p className="text-xs text-muted-foreground">
                         Enter the full literature text. Students will select answers from multiple choice options below.
+                      </p>
+                    )}
+                    {isComposition && (
+                      <p className="text-xs text-muted-foreground">
+                        Enter the composition topic or question title. Students will write their answer (under 200 words) which will be evaluated by AI.
                       </p>
                     )}
                   </FormItem>
@@ -681,6 +700,15 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         points: 1,
         status: 'active',
       }
+    case 'composition':
+      return {
+        quizId,
+        prompt: '',
+        type: 'composition',
+        order: 1,
+        points: 1,
+        status: 'active',
+      }
     case 'matching':
       return {
         quizId,
@@ -695,7 +723,6 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         status: 'active',
       }
     case 'order-words':
-    default:
       return {
         quizId,
         prompt: '',
@@ -706,6 +733,17 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         additionalWords: [],
         punctuation: [],
         type: 'order-words',
+        order: 1,
+        points: 1,
+        status: 'active',
+      }
+    default:
+      return {
+        quizId,
+        prompt: '',
+        blanks: [{ id: nanoid(), answer: '', options: [] }],
+        options: [],
+        type: 'fill-in',
         order: 1,
         points: 1,
         status: 'active',
@@ -809,6 +847,17 @@ function mapQuestionToValues(question: Question): QuestionInput {
       punctuation: punctuation,
       points: question.points ?? 1,
       order: questionPositionOrder, // Question position order (number)
+      status: question.status ?? 'active',
+    }
+  }
+
+  if (question.type === 'composition') {
+    return {
+      ...question,
+      prompt: question.prompt || '',
+      type: 'composition', // Explicitly set type to ensure it matches schema
+      points: question.points ?? 1,
+      order: question.order ?? 1,
       status: question.status ?? 'active',
     }
   }

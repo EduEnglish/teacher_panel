@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore'
 
 export type EntityStatus = 'active' | 'inactive'
-export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words'
+export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words' | 'composition'
 export type LessonType = 'Grammar' | 'Vocabulary' | 'Passages' | 'Literature' | 'Composition'
 export type NotificationAudience = 'all' | 'grade' | 'unit' | 'lesson' | 'custom'
 export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled'
@@ -111,7 +111,13 @@ export interface OrderWordsQuestion extends QuestionBase {
   punctuation?: string[] // Punctuation marks separated from words
 }
 
-export type Question = FillInQuestion | SpellingQuestion | MatchingQuestion | OrderWordsQuestion
+export interface CompositionQuestion extends QuestionBase {
+  type: 'composition'
+  // For composition, prompt is the question/topic title
+  // No answers needed - evaluated by AI
+}
+
+export type Question = FillInQuestion | SpellingQuestion | MatchingQuestion | OrderWordsQuestion | CompositionQuestion
 
 export interface PracticeAggregate extends BaseEntity {
   gradeId?: string
