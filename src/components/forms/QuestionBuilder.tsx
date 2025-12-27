@@ -106,7 +106,7 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     const valuesWithCorrectType = {
       ...values,
       type: getQuestionTypeFromQuizType(quiz.quizType),
-    }
+    } as QuestionInput
     form.reset(valuesWithCorrectType)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentEditingQuestion, quiz.id, quiz.quizType])

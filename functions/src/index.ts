@@ -273,3 +273,105 @@ export const processScheduledNotifications = functions.pubsub
     await Promise.all(tasks)
   })
 
+// AI Composition Evaluation Function
+// This function evaluates student composition answers using OpenAI API
+// API key is stored securely in Firebase Functions config
+export const evaluateComposition = functions.https.onCall(async (data, context) => {
+  // Validate authentication (optional - remove if you want to allow anonymous calls)
+  // if (!context.auth) {
+  //   throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated')
+  // }
+
+  // Validate input data
+  const { questionPrompt, studentAnswer } = data
+
+  if (!questionPrompt || typeof questionPrompt !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'questionPrompt is required and must be a string')
+  }
+
+  if (!studentAnswer || typeof studentAnswer !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'studentAnswer is required and must be a string')
+  }
+
+  if (studentAnswer.trim().length === 0) {
+    return { isCorrect: false }
+  }
+
+  // Get OpenAI API key from Firebase Functions config
+  // Set this using: firebase functions:config:set openai.api_key="your-key-here"
+  const openaiApiKey = functions.config().openai?.api_key
+
+  if (!openaiApiKey) {
+    console.error('OpenAI API key not configured in Firebase Functions config')
+    throw new functions.https.HttpsError(
+      'internal',
+      'AI evaluation service is not configured. Please contact administrator.',
+    )
+  }
+
+  try {
+    // Call OpenAI API
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5-nano',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an English teacher. Respond with only "CORRECT" or "INCORRECT".',
+          },
+          {
+            role: 'user',
+            content: `You are an English teacher evaluating a student's composition.
+
+Question/Topic: ${questionPrompt}
+
+Student's Answer:
+${studentAnswer}
+
+Evaluate if the student's answer:
+1. Addresses the question/topic appropriately
+2. Shows understanding of the subject
+3. Is written in proper English
+4. Has reasonable content quality for the grade level
+
+Respond with ONLY "CORRECT" or "INCORRECT" (no other text, no explanation).`,
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 10,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.error(`OpenAI API error: ${response.status} ${errorBody}`)
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to evaluate composition. Please try again.',
+      )
+    }
+
+    const result = await response.json()
+    const content = result.choices?.[0]?.message?.content || ''
+    const normalizedContent = content.trim().toUpperCase()
+
+    const isCorrect = normalizedContent.includes('CORRECT')
+
+    return { isCorrect }
+  } catch (error) {
+    console.error('Error evaluating composition:', error)
+    if (error instanceof functions.https.HttpsError) {
+      throw error
+    }
+    throw new functions.https.HttpsError(
+      'internal',
+      'An error occurred while evaluating the composition. Please try again.',
+    )
+  }
+})
+
