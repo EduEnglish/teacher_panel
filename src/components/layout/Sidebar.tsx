@@ -47,8 +47,8 @@ export function Sidebar() {
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                  isActive ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90' : 'text-muted-foreground',
+                  'flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition hover:bg-primary hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  isActive ? 'bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:text-white' : 'text-muted-foreground',
                   ('disabled' in item && (item as { disabled?: boolean }).disabled) && 'pointer-events-none opacity-50',
                 )
               }

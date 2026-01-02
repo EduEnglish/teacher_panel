@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,6 +23,8 @@ export function LoginPage() {
   const { notifyError, notifySuccess } = useUI()
   const navigate = useNavigate()
   const location = useLocation()
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoggingIn, setIsLoggingIn] = useState(false)
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -36,25 +39,34 @@ export function LoginPage() {
   }, [isAuthenticated, navigate, location.state])
 
   const handleSubmit = form.handleSubmit(async (values) => {
+    setIsLoggingIn(true)
     try {
-      await login(values.email, values.password)
+      // Trim email and password to remove leading/trailing whitespace
+      const trimmedEmail = values.email.trim()
+      const trimmedPassword = values.password.trim()
+      
+      await login(trimmedEmail, trimmedPassword)
       notifySuccess('Welcome back to EduEnglish!')
       const redirectTo = (location.state as { from?: Location })?.from?.pathname ?? '/dashboard'
       navigate(redirectTo, { replace: true })
     } catch (error) {
       notifyError('Login failed', error instanceof Error ? error.message : 'Please try again.')
+    } finally {
+      setIsLoggingIn(false)
     }
   })
 
   const handleForgotPassword = async () => {
     const email = form.getValues('email')
-    if (!email) {
+    const trimmedEmail = email.trim()
+    
+    if (!trimmedEmail) {
       form.setError('email', { message: 'Enter your email to reset password' })
       return
     }
 
     try {
-      await resetPassword(email)
+      await resetPassword(trimmedEmail)
       notifySuccess('Password reset sent', 'Check your inbox for reset instructions.')
     } catch (error) {
       notifyError('Unable to send reset link', error instanceof Error ? error.message : 'Please try again.')
@@ -86,7 +98,22 @@ export function LoginPage() {
                   <FormItem>
                     <FormLabel>Email address</FormLabel>
                     <FormControl>
-                      <Input placeholder="admin@eduenglish.com" autoComplete="email" {...field} />
+                      <Input
+                        placeholder="admin@eduenglish.com"
+                        autoComplete="email"
+                        {...field}
+                        onChange={(e) => {
+                          // Remove all spaces from email input
+                          const valueWithoutSpaces = e.target.value.replace(/\s/g, '')
+                          field.onChange(valueWithoutSpaces)
+                        }}
+                        onBlur={(e) => {
+                          // Trim any remaining whitespace (shouldn't be any, but just in case)
+                          const trimmedValue = e.target.value.trim()
+                          field.onChange(trimmedValue)
+                          field.onBlur()
+                        }}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -97,8 +124,40 @@ export function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <div className="flex items-center justify-between">
-                      <FormLabel>Password</FormLabel>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input
+                          type={showPassword ? 'text' : 'password'}
+                          placeholder="••••••••"
+                          autoComplete="current-password"
+                          className="pr-10"
+                          {...field}
+                          onChange={(e) => {
+                            const trimmedValue = e.target.value.trimStart()
+                            field.onChange(trimmedValue)
+                          }}
+                          onBlur={(e) => {
+                            const trimmedValue = e.target.value.trim()
+                            field.onChange(trimmedValue)
+                            field.onBlur()
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </FormControl>
+                    <div className="flex justify-end">
                       <button
                         className="text-xs font-medium text-primary hover:underline focus:outline-none"
                         type="button"
@@ -107,15 +166,23 @@ export function LoginPage() {
                         Forgot password?
                       </button>
                     </div>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" autoComplete="current-password" {...field} />
-                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button className="w-full rounded-full py-2.5 font-semibold shadow-md shadow-primary/20" type="submit">
-                Sign in
+              <Button
+                className="w-full rounded-full py-2.5 font-semibold shadow-md shadow-primary/20"
+                type="submit"
+                disabled={isLoggingIn}
+              >
+                {isLoggingIn ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  'Sign in'
+                )}
               </Button>
             </form>
           </Form>

@@ -43,6 +43,7 @@ export interface ListItem {
   english: string
   arabic: string
   imageUrl?: string // Optional image URL from Firebase Storage
+  pronunciation?: string // Optional pronunciation guide for TTS (e.g., "reed" for "read")
 }
 
 export interface SectionList {

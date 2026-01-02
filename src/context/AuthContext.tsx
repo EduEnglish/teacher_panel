@@ -40,7 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async login(email, password) {
         setIsLoading(true)
         try {
-          const authenticatedUser = await firebaseLogin(email, password)
+          // Trim email and password to remove any leading/trailing whitespace
+          const trimmedEmail = email.trim()
+          const trimmedPassword = password.trim()
+          
+          const authenticatedUser = await firebaseLogin(trimmedEmail, trimmedPassword)
           if (allowedAdminEmail && authenticatedUser.email?.toLowerCase() !== allowedAdminEmail) {
             await firebaseLogout()
             setUser(null)
@@ -55,7 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
       },
       async resetPassword(email) {
-        await requestPasswordReset(email)
+        // Trim email to remove any leading/trailing whitespace
+        const trimmedEmail = email.trim()
+        await requestPasswordReset(trimmedEmail)
       },
     }),
     [user, isLoading, allowedAdminEmail],

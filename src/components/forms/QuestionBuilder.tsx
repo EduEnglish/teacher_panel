@@ -465,9 +465,6 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                         />
                       </FormControl>
                       <FormMessage />
-                      <p className="text-xs text-muted-foreground">
-                        This text will be displayed above the question in the mobile app.
-                      </p>
                     </FormItem>
                   )}
                 />
@@ -514,9 +511,6 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                           />
                         </FormControl>
                         <FormMessage />
-                        <p className="text-xs text-muted-foreground">
-                          Enter the complete sentence that students should form by arranging the words.
-                        </p>
                       </FormItem>
                     )
                   }}
@@ -533,9 +527,6 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                       Add Word
                     </Button>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Add extra words that will be mixed with the correct answer words to make the question more challenging.
-                  </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {additionalWordsFieldArray.fields.map((fieldItem, index) => (
                       <FormField
@@ -625,15 +616,50 @@ function separateWordsAndPunctuation(sentence: string): { words: string[]; punct
   }
 
   // Common punctuation marks (ordered by length to check longer ones first, e.g., "'s" before "'")
-  const punctuationMarks = ["'s", '.', ',', '?', '!', ':', ';', "'", '"', '(', ')', '[', ']', '{', '}']
+  // Note: '[' and ']' are intentionally excluded here as they're used for grouping multi-word phrases
+  const punctuationMarks = ["'s", '.', ',', '?', '!', ':', ';', "'", '"', '(', ')', '{', '}']
   
   const words: string[] = []
   const punctuationSet = new Set<string>()
   
-  // Split by whitespace first
-  const parts = sentence.trim().split(/\s+/).filter(part => part.length > 0)
+  // Step 1: Extract bracketed phrases and replace with placeholders
+  // This allows phrases like [her phone] to be treated as single words
+  const bracketedPhrases: string[] = []
+  let processedSentence = sentence.trim()
   
+  // Find all [bracketed text] and replace with unique placeholders
+  const bracketRegex = /\[([^\]]+)\]/g
+  let match
+  let placeholderIndex = 0
+  
+  while ((match = bracketRegex.exec(sentence)) !== null) {
+    const fullMatch = match[0] // e.g., "[her phone]"
+    const content = match[1].trim() // e.g., "her phone" (without brackets)
+    
+    if (content) {
+      const placeholder = `__BRACKET_${placeholderIndex}__`
+      bracketedPhrases.push(content) // Store "her phone"
+      processedSentence = processedSentence.replace(fullMatch, placeholder)
+      placeholderIndex++
+    }
+  }
+  
+  // Step 2: Split by whitespace
+  const parts = processedSentence.split(/\s+/).filter(part => part.length > 0)
+  
+  // Step 3: Process each part and restore bracketed phrases
   for (const part of parts) {
+    // Check if this part is a placeholder for a bracketed phrase
+    const placeholderMatch = part.match(/__BRACKET_(\d+)__/)
+    if (placeholderMatch) {
+      const index = parseInt(placeholderMatch[1], 10)
+      if (index < bracketedPhrases.length) {
+        // This is a bracketed phrase - add it as a single word
+        words.push(bracketedPhrases[index])
+      }
+      continue
+    }
+    
     // Check if the entire part is punctuation
     if (punctuationMarks.includes(part)) {
       punctuationSet.add(part)

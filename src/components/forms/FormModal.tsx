@@ -13,6 +13,7 @@ type FormModalProps = {
   isSubmitting?: boolean
   secondaryAction?: ReactNode
   hideSubmitButton?: boolean
+  className?: string
 }
 
 export function FormModal({
@@ -26,10 +27,11 @@ export function FormModal({
   isSubmitting,
   secondaryAction,
   hideSubmitButton = false,
+  className,
 }: FormModalProps) {
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto">
+      <DialogContent className={className || 'max-h-[90vh] overflow-y-auto'}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description || ' '}</DialogDescription>

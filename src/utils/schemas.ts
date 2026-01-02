@@ -38,6 +38,7 @@ const listItemSchema = z.object({
   english: z.string().min(1, 'English text is required'),
   arabic: z.string().min(1, 'Arabic text is required'),
   imageUrl: z.string().url().optional().or(z.literal('')),
+  pronunciation: z.string().optional().or(z.literal('')),
 })
 
 const sectionListSchema = z.object({

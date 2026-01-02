@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState, useRef } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ChevronRight, Play, Upload, X, Loader2, Maximize2 } from 'lucide-react'
+import { ChevronRight, Play, Upload, X, Loader2, Maximize2, Languages } from 'lucide-react'
 import { deleteField } from 'firebase/firestore'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
 import { FormModal } from '@/components/forms/FormModal'
 import { PageLoader } from '@/components/feedback/PageLoader'
@@ -18,6 +18,7 @@ import type { Section } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 import { uploadImageToStorage, validateImageFile } from '@/utils/imageUpload'
+import { translateToArabic } from '@/services/translationService'
 
 type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string; quizCount: number }
 
@@ -30,6 +31,9 @@ export function SectionsPage() {
   const [editingSection, setEditingSection] = useState<Section | null>(null)
   const [uploadingImageIndex, setUploadingImageIndex] = useState<number | null>(null)
   const [fullImageUrl, setFullImageUrl] = useState<string | null>(null)
+  const [translatingIndex, setTranslatingIndex] = useState<number | null>(null)
+  const [isItemDialogOpen, setIsItemDialogOpen] = useState(false)
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
 
   const { grades, allUnits: cachedAllUnits, allLessons: cachedAllLessons, allQuizzes: cachedAllQuizzes, isLoading: cacheLoading, refreshSections } = useCurriculumCache()
   
@@ -219,9 +223,25 @@ export function SectionsPage() {
       }
 
       // Filter out empty/incomplete list items (items without both english and arabic)
-      const filteredListItems = values.lists?.items?.filter(
-        (item) => item.english?.trim() && item.arabic?.trim()
-      ) || []
+      // Also clean up undefined values - Firebase doesn't accept undefined
+      const filteredListItems = values.lists?.items
+        ?.filter((item) => item.english?.trim() && item.arabic?.trim())
+        ?.map((item) => {
+          // Remove undefined fields - only include defined values
+          const cleanedItem: { english: string; arabic: string; imageUrl?: string; pronunciation?: string } = {
+            english: item.english.trim(),
+            arabic: item.arabic.trim(),
+          }
+          // Only include imageUrl if it's a non-empty string
+          if (item.imageUrl && item.imageUrl.trim()) {
+            cleanedItem.imageUrl = item.imageUrl.trim()
+          }
+          // Only include pronunciation if it's a non-empty string
+          if (item.pronunciation && item.pronunciation.trim()) {
+            cleanedItem.pronunciation = item.pronunciation.trim()
+          }
+          return cleanedItem
+        }) || []
 
       // Check for duplicate section title in the same grade + unit + lesson
       const duplicateSection = sections.find(
@@ -323,15 +343,105 @@ export function SectionsPage() {
     const rawValues = form.getValues()
     
     // Filter out empty/incomplete list items BEFORE validation
-    const filteredListItems = rawValues.lists?.items?.filter(
-      (item) => item.english?.trim() && item.arabic?.trim()
-    ) || []
+    // Also clean up undefined values - Firebase doesn't accept undefined
+    const filteredListItems = rawValues.lists?.items
+      ?.filter((item) => item.english?.trim() && item.arabic?.trim())
+      ?.map((item) => {
+        // Remove undefined fields - only include defined values
+        const cleanedItem: { english: string; arabic: string; imageUrl?: string; pronunciation?: string } = {
+          english: item.english.trim(),
+          arabic: item.arabic.trim(),
+        }
+        // Only include imageUrl if it's a non-empty string
+        if (item.imageUrl && item.imageUrl.trim()) {
+          cleanedItem.imageUrl = item.imageUrl.trim()
+        }
+        // Only include pronunciation if it's a non-empty string
+        if (item.pronunciation && item.pronunciation.trim()) {
+          cleanedItem.pronunciation = item.pronunciation.trim()
+        }
+        return cleanedItem
+      }) || []
 
     // Update form with filtered list items before validation
     form.setValue('lists.items', filteredListItems, { shouldValidate: false })
     
     // Now use handleSubmit to validate and submit (this ensures isSubmitting state works correctly)
     form.handleSubmit(handleSubmitData)()
+  }
+
+  // Manual translate function - called when user clicks translate button
+  const handleManualTranslate = useCallback(async (index: number) => {
+    const englishValue = form.getValues(`lists.items.${index}.english`) as string
+    
+    if (!englishValue || !englishValue.trim()) {
+      notifyError('No text to translate', 'Please enter English text first.')
+      return
+    }
+
+    // Set translating state
+    setTranslatingIndex(index)
+
+    try {
+      const result = await translateToArabic(englishValue.trim())
+      
+      if (result.success && result.translatedText) {
+        // Fill Arabic field with translation (but keep it editable)
+        form.setValue(`lists.items.${index}.arabic`, result.translatedText, { shouldValidate: false })
+        notifySuccess('Translation completed', 'Arabic text has been auto-filled. You can edit it if needed.')
+      } else if (result.error) {
+        // Show error notification
+        notifyError('Translation failed', result.error)
+      }
+    } catch (error) {
+      console.error('Translation error:', error)
+      notifyError('Translation failed', 'Unable to translate. Please enter Arabic manually.')
+    } finally {
+      setTranslatingIndex(null)
+    }
+  }, [form, notifyError, notifySuccess])
+
+  // Open dialog to edit existing item
+  const openEditItemDialog = (index: number) => {
+    setEditingItemIndex(index)
+    setIsItemDialogOpen(true)
+  }
+
+  // Open dialog to add new item
+  const openAddItemDialog = () => {
+    const newIndex = listItemsFieldArray.fields.length
+    listItemsFieldArray.append({ english: '', arabic: '', imageUrl: '', pronunciation: '' })
+    // Explicitly set form values to ensure fields are registered
+    form.setValue(`lists.items.${newIndex}.english`, '', { shouldValidate: false })
+    form.setValue(`lists.items.${newIndex}.arabic`, '', { shouldValidate: false })
+    form.setValue(`lists.items.${newIndex}.imageUrl`, '', { shouldValidate: false })
+    form.setValue(`lists.items.${newIndex}.pronunciation`, '', { shouldValidate: false })
+    // Use setTimeout to ensure form field is registered before opening dialog
+    setTimeout(() => {
+      setEditingItemIndex(newIndex)
+      setIsItemDialogOpen(true)
+    }, 0)
+  }
+
+  // Close item dialog
+  const closeItemDialog = () => {
+    // If editing item index is the last one and it's empty, remove it (cancel add)
+    if (editingItemIndex !== null) {
+      const item = form.watch(`lists.items.${editingItemIndex}`)
+      if (!item?.english?.trim() && !item?.arabic?.trim() && !item?.imageUrl && !item?.pronunciation?.trim()) {
+        listItemsFieldArray.remove(editingItemIndex)
+      }
+    }
+    setIsItemDialogOpen(false)
+    setEditingItemIndex(null)
+    setTranslatingIndex(null)
+  }
+
+  // Save and close item dialog
+  const saveItemDialog = () => {
+    setIsItemDialogOpen(false)
+    setEditingItemIndex(null)
+    setTranslatingIndex(null)
   }
 
   const columns: Array<DataTableColumn<SectionTableRow>> = [
@@ -437,6 +547,7 @@ export function SectionsPage() {
         onSubmit={onSubmit}
         submitLabel={editingSection ? 'Update Section' : 'Create Section'}
         isSubmitting={form.formState.isSubmitting}
+        className="max-w-7xl max-h-[90vh] overflow-y-auto"
       >
         <Form {...form}>
           <form className="space-y-4">
@@ -472,201 +583,344 @@ export function SectionsPage() {
               )}
             />
 
-            {/* Lists Section */}
+            {/* Lists Section - Grid Card View */}
             <div className="space-y-4 border-t border-border pt-4">
               <div className="flex items-center justify-between">
-                <FormLabel>Lists (Optional)</FormLabel>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => listItemsFieldArray.append({ english: '', arabic: '', imageUrl: '' })}
-                >
-                  Add List Item
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Add vocabulary or sentence lists with English and Arabic translations. Images are optional.
-              </p>
-
-              {listItemsFieldArray.fields.map((fieldItem, index) => (
-                <div key={fieldItem.id} className="space-y-4 border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between">
-                    <FormLabel className="text-sm font-semibold">List Item {index + 1}</FormLabel>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => listItemsFieldArray.remove(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Image Upload Section - At Top */}
-                    <FormField
-                      name={`lists.items.${index}.imageUrl` as const}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Image (Optional)</FormLabel>
-                          <div className="space-y-2">
-                            {field.value ? (
-                              <div className="relative group">
-                                <img
-                                  src={field.value}
-                                  alt="Preview"
-                                  className="w-full rounded-lg border-2 border-border object-contain cursor-pointer hover:opacity-90 transition-opacity"
-                                  style={{ maxHeight: '400px' }}
-                                  onClick={() => setFullImageUrl(field.value)}
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement
-                                    target.style.display = 'none'
-                                  }}
-                                />
-                                <div className="absolute top-2 right-2 flex gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="secondary"
-                                    size="icon"
-                                    className="bg-black/50 hover:bg-black/70 text-white border-0"
-                                    onClick={() => setFullImageUrl(field.value)}
-                                    title="View full image"
-                                  >
-                                    <Maximize2 className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="icon"
-                                    className="bg-red-500/90 hover:bg-red-600"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      field.onChange('')
-                                    }}
-                                    disabled={uploadingImageIndex === index}
-                                    title="Remove image"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div
-                                onClick={() => {
-                                  if (uploadingImageIndex === index) return
-                                  const input = document.createElement('input')
-                                  input.type = 'file'
-                                  input.accept = 'image/*'
-                                  input.onchange = async (e) => {
-                                    const file = (e.target as HTMLInputElement).files?.[0]
-                                    if (file) {
-                                      const validation = validateImageFile(file)
-                                      if (!validation.isValid) {
-                                        notifyError('Invalid image', validation.error)
-                                        return
-                                      }
-                                      try {
-                                        setUploadingImageIndex(index)
-                                        // Check if user is authenticated
-                                        if (!user?.uid) {
-                                          throw new Error('You must be logged in to upload images. Please refresh the page.')
-                                        }
-                                        
-                                        const url = await uploadImageToStorage(file)
-                                        field.onChange(url)
-                                        setUploadingImageIndex(null)
-                                        notifySuccess('Image uploaded successfully')
-                                      } catch (error) {
-                                        setUploadingImageIndex(null)
-                                        const errorMessage = error instanceof Error ? error.message : 'Failed to upload image'
-                                        notifyError('Upload failed', errorMessage)
-                                        console.error('Image upload error details:', {
-                                          error,
-                                          user: user?.uid,
-                                          fileName: file.name,
-                                          fileSize: file.size,
-                                        })
-                                      }
-                                    }
-                                  }
-                                  input.click()
-                                }}
-                                className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 transition-colors ${
-                                  uploadingImageIndex === index
-                                    ? 'border-primary bg-primary/5 cursor-wait'
-                                    : 'border-border bg-muted/30 cursor-pointer hover:border-primary'
-                                }`}
-                              >
-                                {uploadingImageIndex === index ? (
-                                  <>
-                                    <Loader2 className="h-8 w-8 text-primary mb-2 animate-spin" />
-                                    <p className="text-sm font-medium text-primary">
-                                      Uploading image...
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      Please wait
-                                    </p>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                                    <p className="text-sm font-medium text-muted-foreground">
-                                      Click to upload image
-                                    </p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      PNG, JPG, GIF up to 5MB
-                                    </p>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* English Input */}
-                    <FormField
-                      name={`lists.items.${index}.english` as const}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>English</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter English text" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Arabic Input */}
-                    <FormField
-                      name={`lists.items.${index}.arabic` as const}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Arabic</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter Arabic text" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                <div className="space-y-1">
+                  <FormLabel>Lists (Optional)</FormLabel>
+                  <p className="text-xs font-medium" style={{ color: '#ea580c' }}>
+                    Total Items: {listItemsFieldArray.fields.length}
+                  </p>
                 </div>
-              ))}
+              </div>
+
+              {/* Grid of List Item Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {listItemsFieldArray.fields.map((fieldItem, index) => {
+                  const item = form.watch(`lists.items.${index}`)
+                  return (
+                    <div
+                      key={fieldItem.id}
+                      className="group relative border border-border rounded-lg overflow-hidden bg-card hover:border-primary hover:shadow-md transition-all cursor-pointer flex flex-col"
+                      style={{ height: '200px' }}
+                    >
+                      {/* Image Thumbnail */}
+                      {item?.imageUrl ? (
+                        <div className="relative h-16 bg-muted flex-shrink-0">
+                          <img
+                            src={item.imageUrl}
+                            alt="Item preview"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement
+                              target.style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="relative h-16 bg-muted/30 flex-shrink-0" />
+                      )}
+
+                      {/* Card Content */}
+                      <div className="p-2 space-y-0.8 flex flex-col flex-grow min-h-0">
+                        {/* English Text */}
+                        <div className="h-7 flex-shrink-0 flex items-center overflow-hidden">
+                          <p className="text-sm font-medium text-foreground truncate w-full" title={item?.english || ''}>
+                            {item?.english || <span className="text-muted-foreground italic">No English text</span>}
+                          </p>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="border-t border-border/50 flex-shrink-0" />
+
+                        {/* Arabic Text */}
+                        <div className="h-10 flex-shrink-0 flex items-center overflow-hidden">
+                          <p className="text-sm text-muted-foreground truncate w-full" dir="rtl" title={item?.arabic || ''}>
+                            {item?.arabic || <span className="italic">No Arabic text</span>}
+                          </p>
+                        </div>
+
+                        {/* Spacer to push buttons to bottom */}
+                        {/* <div className="flex-grow" style={{ minHeight: '8px' }} /> */}
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-border/50 flex-shrink-0" style={{ minHeight: '36px' }}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-xs"
+                            onClick={() => openEditItemDialog(index)}
+                          >
+                            ✏️ Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              listItemsFieldArray.remove(index)
+                            }}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+
+                {/* Add New Item Card */}
+                <button
+                  type="button"
+                  onClick={openAddItemDialog}
+                  className="group relative border-2 border-dashed rounded-lg overflow-hidden bg-gradient-to-br from-orange-50 to-orange-100/50 hover:from-orange-100 hover:to-orange-200/50 hover:border-orange-400 transition-all flex flex-col items-center justify-center gap-3"
+                  style={{ borderColor: '#fed7aa', height: '200px' }}
+                >
+                  <div className="w-16 h-16 rounded-full bg-orange-200/50 group-hover:bg-orange-300/50 flex items-center justify-center transition-colors">
+                    <span className="text-3xl text-orange-600 group-hover:text-orange-700">+</span>
+                  </div>
+                  <p className="text-sm font-medium text-orange-700 group-hover:text-orange-800">Add New Item</p>
+                  <p className="text-xs text-orange-600/70">Click to create</p>
+                </button>
+              </div>
 
               {listItemsFieldArray.fields.length === 0 && (
-                <p className="text-xs text-muted-foreground italic text-center py-4">
-                  No list items added. Click "Add List Item" to create one.
+                <p className="text-xs text-muted-foreground italic text-center py-8">
+                  No list items added yet. Click "Add New Item" to create one.
                 </p>
               )}
             </div>
           </form>
         </Form>
       </FormModal>
+
+      {/* Edit List Item Dialog */}
+      <Dialog open={isItemDialogOpen} onOpenChange={(open) => !open && closeItemDialog()}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItemIndex !== null && editingItemIndex < listItemsFieldArray.fields.length 
+                ? `Edit List Item ${editingItemIndex + 1}`
+                : 'Add New List Item'}
+            </DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <div className="space-y-6 py-4">
+
+              {editingItemIndex !== null && editingItemIndex < listItemsFieldArray.fields.length && (
+                <div className="space-y-6">
+                {/* Image Upload Section */}
+                <FormField
+                  name={`lists.items.${editingItemIndex}.imageUrl` as const}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Image (Optional)</FormLabel>
+                      <div className="space-y-2">
+                        {field.value ? (
+                          <div className="relative group">
+                            <img
+                              src={field.value}
+                              alt="Preview"
+                              className="w-full rounded-lg border-2 border-border object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                              style={{ maxHeight: '300px' }}
+                              onClick={() => setFullImageUrl(field.value)}
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement
+                                target.style.display = 'none'
+                              }}
+                            />
+                            <div className="absolute top-2 right-2 flex gap-2">
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                size="icon"
+                                className="bg-black/50 hover:bg-black/70 text-white border-0"
+                                onClick={() => setFullImageUrl(field.value)}
+                                title="View full image"
+                              >
+                                <Maximize2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="icon"
+                                className="bg-red-500/90 hover:bg-red-600"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  field.onChange('')
+                                }}
+                                disabled={uploadingImageIndex === editingItemIndex}
+                                title="Remove image"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => {
+                              if (uploadingImageIndex === editingItemIndex) return
+                              const input = document.createElement('input')
+                              input.type = 'file'
+                              input.accept = 'image/*'
+                              input.onchange = async (e) => {
+                                const file = (e.target as HTMLInputElement).files?.[0]
+                                if (file) {
+                                  const validation = validateImageFile(file)
+                                  if (!validation.isValid) {
+                                    notifyError('Invalid image', validation.error)
+                                    return
+                                  }
+                                  try {
+                                    setUploadingImageIndex(editingItemIndex)
+                                    if (!user?.uid) {
+                                      throw new Error('You must be logged in to upload images. Please refresh the page.')
+                                    }
+                                    
+                                    const url = await uploadImageToStorage(file)
+                                    field.onChange(url)
+                                    setUploadingImageIndex(null)
+                                    notifySuccess('Image uploaded successfully')
+                                  } catch (error) {
+                                    setUploadingImageIndex(null)
+                                    const errorMessage = error instanceof Error ? error.message : 'Failed to upload image'
+                                    notifyError('Upload failed', errorMessage)
+                                  }
+                                }
+                              }
+                              input.click()
+                            }}
+                            className={`flex flex-col items-center justify-center border-2 border-dashed rounded-lg p-8 transition-colors ${
+                              uploadingImageIndex === editingItemIndex
+                                ? 'border-primary bg-primary/5 cursor-wait'
+                                : 'border-border bg-muted/30 cursor-pointer hover:border-primary'
+                            }`}
+                          >
+                            {uploadingImageIndex === editingItemIndex ? (
+                              <>
+                                <Loader2 className="h-8 w-8 text-primary mb-2 animate-spin" />
+                                <p className="text-sm font-medium text-primary">Uploading image...</p>
+                                <p className="text-xs text-muted-foreground mt-1">Please wait</p>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                                <p className="text-sm font-medium text-muted-foreground">Click to upload image</p>
+                                <p className="text-xs text-muted-foreground mt-1">PNG, JPG, GIF up to 5MB</p>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* English Input */}
+                <FormField
+                  name={`lists.items.${editingItemIndex}.english` as const}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>English</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Enter English text" 
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Pronunciation Input (Optional) */}
+                <FormField
+                  name={`lists.items.${editingItemIndex}.pronunciation` as const}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2">
+                        <span>Pronunciation Guide (Optional)</span>
+                        <span className="text-xs font-normal text-muted-foreground">🔊 TTS Only</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder='e.g., "reed" for "read" (present tense)' 
+                          {...field}
+                          className="font-mono text-sm"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Arabic Input */}
+                <FormField
+                  name={`lists.items.${editingItemIndex}.arabic` as const}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span>Arabic</span>
+                          {translatingIndex === editingItemIndex && (
+                            <span className="inline-flex items-center gap-1 text-xs font-normal text-primary">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Translating...
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleManualTranslate(editingItemIndex)}
+                          disabled={translatingIndex === editingItemIndex || !form.getValues(`lists.items.${editingItemIndex}.english`)?.trim()}
+                          className="h-7 px-3 text-xs bg-orange-50 hover:bg-orange-100 border-orange-200 text-orange-700 hover:text-orange-800"
+                        >
+                          <Languages className="h-3 w-3 mr-1.5" />
+                          Translate
+                        </Button>
+                      </FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Enter Arabic translation or click Translate button" 
+                          {...field}
+                          dir="rtl"
+                          disabled={translatingIndex === editingItemIndex}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={closeItemDialog}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={saveItemDialog}
+                    className="bg-primary"
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            )}
+            </div>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Full Image View Dialog */}
       <Dialog open={!!fullImageUrl} onOpenChange={(open) => !open && setFullImageUrl(null)}>

@@ -80,12 +80,18 @@ export function onAuthStateChangedListener(callback: (user: User | null) => void
 }
 
 export async function login(email: string, password: string) {
-  const credential = await signInWithEmailAndPassword(auth, email, password)
+  // Trim email and password to remove any leading/trailing whitespace
+  const trimmedEmail = email.trim()
+  const trimmedPassword = password.trim()
+  
+  const credential = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPassword)
   return credential.user
 }
 
 export async function requestPasswordReset(email: string) {
-  return sendPasswordResetEmail(auth, email)
+  // Trim email to remove any leading/trailing whitespace
+  const trimmedEmail = email.trim()
+  return sendPasswordResetEmail(auth, trimmedEmail)
 }
 
 export async function logout() {
