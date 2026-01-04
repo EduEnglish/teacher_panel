@@ -26,10 +26,15 @@ const DialogOverlay = React.forwardRef<
 ))
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName
 
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  preventCloseOnOutsideClick?: boolean
+  preventCloseOnEscape?: boolean
+}
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, preventCloseOnOutsideClick = false, preventCloseOnEscape = false, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
@@ -38,6 +43,16 @@ const DialogContent = React.forwardRef<
         'fixed z-50 grid w-full gap-4 rounded-t-2xl border border-border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-1/2 data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-1/2 sm:max-w-lg sm:rounded-2xl sm:zoom-in-90 sm:data-[state=closed]:slide-out-to-bottom-0 sm:data-[state=open]:slide-in-from-bottom-0',
         className,
       )}
+      onInteractOutside={(e) => {
+        if (preventCloseOnOutsideClick) {
+          e.preventDefault()
+        }
+      }}
+      onEscapeKeyDown={(e) => {
+        if (preventCloseOnEscape) {
+          e.preventDefault()
+        }
+      }}
       {...props}
     >
       {children}

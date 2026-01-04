@@ -698,8 +698,18 @@ export function SectionsPage() {
       </FormModal>
 
       {/* Edit List Item Dialog */}
-      <Dialog open={isItemDialogOpen} onOpenChange={(open) => !open && closeItemDialog()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={isItemDialogOpen} onOpenChange={(value) => {
+        // Only allow closing via close button
+        // Outside clicks and escape are prevented by preventCloseOnOutsideClick and preventCloseOnEscape
+        if (!value) {
+          closeItemDialog()
+        }
+      }}>
+        <DialogContent 
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          preventCloseOnOutsideClick={true}
+          preventCloseOnEscape={true}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingItemIndex !== null && editingItemIndex < listItemsFieldArray.fields.length 

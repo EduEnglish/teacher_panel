@@ -69,6 +69,7 @@ export const quizSchema = z.object({
   sectionId: z.string().min(1, 'Section is required'),
   title: z.string().min(2, 'Quiz title must be at least 2 characters'),
   quizType: z.enum(quizTypes),
+  aiEvaluationPrompt: z.string().optional(), // Optional additional prompt/instructions for AI evaluation (composition quizzes only)
 })
 
 export const fillInQuestionSchema = z.object({

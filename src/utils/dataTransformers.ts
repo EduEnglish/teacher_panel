@@ -195,6 +195,7 @@ export function transformQuizToStudentFormat(
   durationMinutes: number
   totalPoints: number
   questions: StudentAppQuestion[]
+  aiEvaluationPrompt?: string // Optional additional prompt/instructions for AI evaluation (composition quizzes only)
 } {
   // Sort questions by order
   const sortedQuestions = [...questions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -217,6 +218,7 @@ export function transformQuizToStudentFormat(
     durationMinutes: 10, // Default 10 minutes (removed from form)
     totalPoints: totalPoints,
     questions: transformedQuestions,
+    aiEvaluationPrompt: quiz.aiEvaluationPrompt, // Optional additional prompt for AI evaluation (composition quizzes only)
   }
 }
 
@@ -231,7 +233,7 @@ export function prepareQuizDocumentForFirestore(
   const studentFormat = transformQuizToStudentFormat(quiz, questions)
 
   // Return exact format from quizzes.json
-  return {
+  const quizDoc: Record<string, unknown> = {
     id: studentFormat.id,
     sectionId: studentFormat.sectionId,
     title: studentFormat.title,
@@ -294,5 +296,12 @@ export function prepareQuizDocumentForFirestore(
       return questionObj
     }),
   }
+
+  // Add aiEvaluationPrompt if present (for composition quizzes)
+  if (studentFormat.aiEvaluationPrompt) {
+    quizDoc.aiEvaluationPrompt = studentFormat.aiEvaluationPrompt
+  }
+
+  return quizDoc
 }
 

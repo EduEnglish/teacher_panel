@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { DataTable, type DataTableColumn } from '@/components/tables/DataTable'
@@ -119,6 +120,7 @@ export function QuizzesPage() {
       sectionId: '',
       title: '',
       quizType: 'fill-in',
+      aiEvaluationPrompt: '',
     },
   })
 
@@ -132,6 +134,7 @@ export function QuizzesPage() {
         sectionId: editingQuiz.sectionId,
         title: editingQuiz.title,
         quizType: editingQuiz.quizType,
+        aiEvaluationPrompt: editingQuiz.aiEvaluationPrompt || '',
       })
     } else {
       form.reset({
@@ -141,6 +144,7 @@ export function QuizzesPage() {
         sectionId: sectionId || '',
         title: '',
         quizType: 'fill-in',
+        aiEvaluationPrompt: '',
       })
     }
   }, [editingQuiz, gradeId, unitId, lessonId, sectionId, form])
@@ -233,6 +237,7 @@ export function QuizzesPage() {
           {
             title: values.title,
             quizType: values.quizType,
+            aiEvaluationPrompt: values.aiEvaluationPrompt?.trim() || undefined,
           },
           result?.questions.map((q) => ({
             ...q,
@@ -279,6 +284,7 @@ export function QuizzesPage() {
             sectionId: sectionId,
             title: values.title,
             quizType: values.quizType,
+            aiEvaluationPrompt: values.aiEvaluationPrompt?.trim() || undefined,
           } as Omit<Quiz, 'id' | 'createdAt' | 'updatedAt'>,
           [], // Start with no questions
           user.uid,
@@ -465,6 +471,27 @@ export function QuizzesPage() {
                 </FormItem>
               )}
             />
+            {form.watch('quizType') === 'composition' && (
+              <FormField
+                name="aiEvaluationPrompt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>AI Evaluation Prompt (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Add additional instructions for AI evaluation (e.g., 'Focus on grammar accuracy', 'Penalize spelling mistakes more strictly')"
+                        className="min-h-[100px] resize-none"
+                        {...field}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Provide additional instructions for the AI evaluator. These will be combined with the default evaluation criteria.
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </form>
         </Form>
       </FormModal>

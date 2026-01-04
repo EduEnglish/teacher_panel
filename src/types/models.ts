@@ -69,6 +69,7 @@ export interface Quiz extends Omit<BaseEntity, 'status'> {
   description?: string
   quizType: QuizType
   isPublished: boolean
+  aiEvaluationPrompt?: string // Optional additional prompt/instructions for AI evaluation (composition quizzes only)
 }
 
 export type QuestionOption = {

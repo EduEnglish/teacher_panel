@@ -30,8 +30,18 @@ export function FormModal({
   className,
 }: FormModalProps) {
   return (
-    <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className={className || 'max-h-[90vh] overflow-y-auto'}>
+    <Dialog open={open} onOpenChange={(value) => {
+      // Only allow closing via close button or cancel button
+      // Outside clicks and escape are prevented by preventCloseOnOutsideClick and preventCloseOnEscape
+      if (!value) {
+        onClose()
+      }
+    }}>
+      <DialogContent 
+        className={className || 'max-h-[90vh] overflow-y-auto'}
+        preventCloseOnOutsideClick={true}
+        preventCloseOnEscape={true}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description || ' '}</DialogDescription>
