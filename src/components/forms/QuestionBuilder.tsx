@@ -47,6 +47,42 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
   const [orderWordsSentence, setOrderWordsSentence] = useState<string>('')
   
+  // State for comma-separated options input for each blank
+  const [commaOptionsInputs, setCommaOptionsInputs] = useState<Record<number, string>>({})
+
+  // Function to parse comma-separated options
+  const parseCommaOptions = (input: string): string[] => {
+    return input
+      .split(',')
+      .map(option => option.trim())
+      .filter(option => option.length > 0)
+  }
+
+  // Function to handle adding comma-separated options
+  const handleAddCommaOptions = (blankIndex: number) => {
+    const input = commaOptionsInputs[blankIndex] || ''
+    const parsedOptions = parseCommaOptions(input)
+    
+    if (parsedOptions.length > 0) {
+      const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
+      const updated = [...current, ...parsedOptions]
+      form.setValue(`blanks.${blankIndex}.options`, updated)
+      
+      // Clear the input field after adding
+      setCommaOptionsInputs(prev => ({
+        ...prev,
+        [blankIndex]: ''
+      }))
+    }
+  }
+
+  // Function to remove a specific option
+  const removeOption = (blankIndex: number, optionIndex: number) => {
+    const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
+    const updated = current.filter((_, idx) => idx !== optionIndex)
+    form.setValue(`blanks.${blankIndex}.options`, updated)
+  }
+  
   // Use external editingQuestion if provided, otherwise use internal state
   const currentEditingQuestion = externalEditingQuestion !== undefined ? externalEditingQuestion : editingQuestion
 
@@ -295,57 +331,75 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                           <FormLabel className="text-sm font-medium">
                             {isPassagesOrLiterature ? 'Multiple Choice Options' : 'Options'}
                           </FormLabel>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
-                              form.setValue(`blanks.${blankIndex}.options`, [...current, ''])
-                            }}
-                          >
-                            Add Option
-                          </Button>
                         </div>
                         
-                        <div className="space-y-3">
-                          {currentOptions.map((_, optionIndex) => (
-                            <FormField
-                              key={optionIndex}
-                              name={`blanks.${blankIndex}.options.${optionIndex}` as const}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <div className="flex items-center gap-2">
-                                    <FormControl>
-                                      <Input {...field} placeholder="Option text" />
-                                    </FormControl>
-                                    <Button
-                                      type="button"
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => {
-                                        const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
-                                        const updated = current.filter((_, idx) => idx !== optionIndex)
-                                        form.setValue(`blanks.${blankIndex}.options`, updated)
-                                      }}
-                                    >
-                                      ×
-                                    </Button>
-                                  </div>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
+                        {/* Comma-separated options input */}
+                        <div className="space-y-2">
+                          <FormLabel className="text-xs text-muted-foreground">
+                            Quick Add Options (comma-separated)
+                          </FormLabel>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="e.g., cat, dog, bird, fish"
+                              value={commaOptionsInputs[blankIndex] || ''}
+                              onChange={(e) => {
+                                setCommaOptionsInputs(prev => ({
+                                  ...prev,
+                                  [blankIndex]: e.target.value
+                                }))
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  handleAddCommaOptions(blankIndex)
+                                }
+                              }}
                             />
-                          ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleAddCommaOptions(blankIndex)}
+                              disabled={!commaOptionsInputs[blankIndex]?.trim()}
+                            >
+                              Add Options
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Enter multiple options separated by commas. Extra spaces will be automatically cleaned.
+                          </p>
                         </div>
                         
-                        {currentOptions.length === 0 && (
-                          <p className="text-xs text-muted-foreground italic">
-                            {isPassagesOrLiterature 
-                              ? "Add multiple choice options. Students will select from these options."
-                              : "No options added. Students will type their answer freely."}
-                          </p>
-                        )}
+                        {/* Display current options */}
+                        <div className="space-y-2">
+                          <FormLabel className="text-xs text-muted-foreground">
+                            Current Options ({currentOptions.length})
+                          </FormLabel>
+                          {currentOptions.length > 0 ? (
+                            <div className="space-y-2">
+                              {currentOptions.map((option, optionIndex) => (
+                                <div key={optionIndex} className="flex items-center justify-between bg-muted/50 rounded-md p-2">
+                                  <span className="text-sm">{option}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={() => removeOption(blankIndex, optionIndex)}
+                                  >
+                                    ×
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic">
+                              {isPassagesOrLiterature 
+                                ? "Add multiple choice options. Students will select from these options."
+                                : "No options added. Students will type their answer freely."}
+                            </p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )
