@@ -27,6 +27,7 @@ type QuizTableRow = Quiz & {
   lessonTitle: string
   sectionTitle: string
   questionCount: number
+  serialNumber: number
 }
 
 export function QuizzesPage() {
@@ -312,33 +313,59 @@ export function QuizzesPage() {
   const lessonMap = useMemo(() => new Map(cachedAllLessons.map((lesson) => [lesson.id, lesson.title])), [cachedAllLessons])
   const sectionMap = useMemo(() => new Map(cachedAllSections.map((section) => [section.id, section.title])), [cachedAllSections])
 
-  const rows: QuizTableRow[] = quizzes
-    .map((quiz) => {
-      // Handle both 'quizType' and 'type' fields (Firestore uses 'type' for student app format)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const quizType = ((quiz as any).quizType || (quiz as any).type || 'fill-in') as Quiz['quizType']
-      return {
-      ...quiz,
-        quizType: quizType, // Ensure quizType is always set
-      gradeName: gradeMap.get(quiz.gradeId) ?? '—',
-      unitTitle: unitMap.get(quiz.unitId) ?? '—',
-      lessonTitle: lessonMap.get(quiz.lessonId) ?? '—',
-      sectionTitle: sectionMap.get(quiz.sectionId) ?? '—',
-      questionCount: questionCounts[quiz.id] ?? 0,
-      }
-    })
-    .sort((a, b) => {
-      // Then sort by lesson title
-      const lessonCompare = (a.lessonTitle || '').localeCompare(b.lessonTitle || '')
-      if (lessonCompare !== 0) return lessonCompare
-      // Then sort by section title
-      const sectionCompare = (a.sectionTitle || '').localeCompare(b.sectionTitle || '')
-      if (sectionCompare !== 0) return sectionCompare
-      // Finally sort by quiz title
-      return a.title.localeCompare(b.title)
-    })
+  const rows: QuizTableRow[] = (() => {
+    const getCreatedAtMillis = (quiz: Quiz) => {
+      const ts = quiz.createdAt as { toMillis?: () => number } | null | undefined
+      return ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0
+    }
+
+    const baseRows = quizzes
+      .map((quiz) => {
+        // Handle both 'quizType' and 'type' fields (Firestore uses 'type' for student app format)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const quizType = ((quiz as any).quizType || (quiz as any).type || 'fill-in') as Quiz['quizType']
+        return {
+          ...quiz,
+          quizType: quizType, // Ensure quizType is always set
+          gradeName: gradeMap.get(quiz.gradeId) ?? '—',
+          unitTitle: unitMap.get(quiz.unitId) ?? '—',
+          lessonTitle: lessonMap.get(quiz.lessonId) ?? '—',
+          sectionTitle: sectionMap.get(quiz.sectionId) ?? '—',
+          questionCount: questionCounts[quiz.id] ?? 0,
+        }
+      })
+      .sort((a, b) => {
+        // Primary: latest created first
+        const aCreated = getCreatedAtMillis(a)
+        const bCreated = getCreatedAtMillis(b)
+        if (aCreated !== bCreated) {
+          return bCreated - aCreated
+        }
+
+        // Fallback: previous logical ordering (lesson, section, quiz title)
+        const lessonCompare = (a.lessonTitle || '').localeCompare(b.lessonTitle || '')
+        if (lessonCompare !== 0) return lessonCompare
+
+        const sectionCompare = (a.sectionTitle || '').localeCompare(b.sectionTitle || '')
+        if (sectionCompare !== 0) return sectionCompare
+
+        return a.title.localeCompare(b.title)
+      })
+
+    return baseRows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+    }))
+  })()
 
   const columns: Array<DataTableColumn<QuizTableRow>> = [
+    {
+      key: 'serialNumber',
+      header: 'S.No.',
+      width: '64px',
+      align: 'center',
+      render: (row) => <span className="text-xs text-muted-foreground">{row.serialNumber}</span>,
+    },
     { 
       key: 'title', 
       header: 'Quiz Title',

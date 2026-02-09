@@ -20,7 +20,7 @@ import { useUI } from '@/context/UIContext'
 import { uploadImageToStorage, validateImageFile } from '@/utils/imageUpload'
 import { translateToArabic } from '@/services/translationService'
 
-type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string; quizCount: number }
+type SectionTableRow = Section & { gradeName: string; unitTitle: string; lessonTitle: string; quizCount: number; serialNumber: number }
 
 export function SectionsPage() {
   const { gradeId, unitId, lessonId } = useParams<{ gradeId: string; unitId: string; lessonId: string }>()
@@ -147,7 +147,13 @@ export function SectionsPage() {
       acc[key] = (acc[key] ?? 0) + 1
       return acc
     }, {})
-    return sections
+
+    const getCreatedAtMillis = (section: Section) => {
+      const ts = section.createdAt as { toMillis?: () => number } | null | undefined
+      return ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0
+    }
+
+    const baseRows = sections
       .map((section) => ({
         ...section,
         gradeName: gradeMap.get(section.gradeId) ?? '—',
@@ -155,7 +161,21 @@ export function SectionsPage() {
         lessonTitle: lessonMap.get(section.lessonId) ?? '—',
         quizCount: quizzesPerSection[`${section.gradeId}_${section.unitId}_${section.lessonId}_${section.id}`] ?? 0,
       }))
-      .sort((a, b) => a.title.localeCompare(b.title))
+      .sort((a, b) => {
+        // Primary: latest created first
+        const aCreated = getCreatedAtMillis(a)
+        const bCreated = getCreatedAtMillis(b)
+        if (aCreated !== bCreated) {
+          return bCreated - aCreated
+        }
+        // Fallback: alphabetical by title
+        return a.title.localeCompare(b.title)
+      })
+
+    return baseRows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+    }))
   }, [sections, grades, cachedAllUnits, cachedAllLessons, cachedAllQuizzes])
 
   const handleOpenNew = () => {
@@ -445,6 +465,13 @@ export function SectionsPage() {
   }
 
   const columns: Array<DataTableColumn<SectionTableRow>> = [
+    {
+      key: 'serialNumber',
+      header: 'S.No.',
+      width: '64px',
+      align: 'center',
+      render: (row) => <span className="text-xs text-muted-foreground">{row.serialNumber}</span>,
+    },
     { 
       key: 'title', 
       header: 'Section Title',

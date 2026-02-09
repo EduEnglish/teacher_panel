@@ -39,6 +39,7 @@ type QuestionTableRow = Question & {
   sectionTitle: string
   quizTitle: string
   quizType: string
+  serialNumber: number
 }
 
 export function QuestionsPage() {
@@ -114,19 +115,42 @@ export function QuestionsPage() {
     setPageTitle('Questions')
   }, [setPageTitle])
 
-  const rows: QuestionTableRow[] = questions
-    .map((question) => {
-      return {
-        ...question,
-        gradeName: currentGrade?.name ?? '—',
-        unitTitle: currentUnit ? `Unit ${currentUnit.number}` : '—',
-        lessonTitle: currentLesson?.title ?? '—',
-        sectionTitle: currentSection?.title ?? '—',
-        quizTitle: currentQuiz?.title ?? '—',
-        quizType: currentQuiz?.quizType ?? '—',
-      }
-    })
-    .sort((a, b) => a.order - b.order)
+  const rows: QuestionTableRow[] = (() => {
+    const getCreatedAtMillis = (question: Question) => {
+      const ts = question.createdAt as { toMillis?: () => number } | null | undefined
+      return ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0
+    }
+
+    const baseRows = questions
+      .map((question) => {
+        return {
+          ...question,
+          gradeName: currentGrade?.name ?? '—',
+          unitTitle: currentUnit ? `Unit ${currentUnit.number}` : '—',
+          lessonTitle: currentLesson?.title ?? '—',
+          sectionTitle: currentSection?.title ?? '—',
+          quizTitle: currentQuiz?.title ?? '—',
+          quizType: currentQuiz?.quizType ?? '—',
+        }
+      })
+      .sort((a, b) => {
+        // Primary: latest created first
+        const aCreated = getCreatedAtMillis(a)
+        const bCreated = getCreatedAtMillis(b)
+        if (aCreated !== bCreated) {
+          return bCreated - aCreated
+        }
+        // Fallback: highest order first (newer questions usually have higher order)
+        const aOrder = a.order ?? 0
+        const bOrder = b.order ?? 0
+        return bOrder - aOrder
+      })
+
+    return baseRows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+    }))
+  })()
 
   const handleOpenNew = () => {
     setEditingQuestion(null)
@@ -345,6 +369,13 @@ export function QuestionsPage() {
   }
 
   const columns: Array<DataTableColumn<QuestionTableRow>> = [
+    {
+      key: 'serialNumber',
+      header: 'S.No.',
+      width: '64px',
+      align: 'center',
+      render: (row) => <span className="text-xs text-muted-foreground">{row.serialNumber}</span>,
+    },
     {
       key: 'prompt',
       header: 'Question',

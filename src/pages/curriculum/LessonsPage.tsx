@@ -18,7 +18,7 @@ import type { Lesson } from '@/types/models'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
-type LessonTableRow = Lesson & { gradeName: string; unitTitle: string; sectionCount: number }
+type LessonTableRow = Lesson & { gradeName: string; unitTitle: string; sectionCount: number; serialNumber: number }
 
 export function LessonsPage() {
   const { gradeId, unitId } = useParams<{ gradeId: string; unitId: string }>()
@@ -138,14 +138,37 @@ export function LessonsPage() {
       return acc
     }, {})
 
-    return lessons
+    // Helper to safely read createdAt timestamp (Firebase Timestamp has toMillis())
+    const getCreatedAtMillis = (lesson: Lesson) => {
+      const ts = lesson.createdAt as { toMillis?: () => number } | null | undefined
+      return ts && typeof ts.toMillis === 'function' ? ts.toMillis() : 0
+    }
+
+    const baseRows = lessons
       .map((lesson) => ({
         ...lesson,
         gradeName: gradeMap.get(lesson.gradeId) ?? '—',
         unitTitle: unitMap.get(lesson.unitId) ?? '—',
         sectionCount: sectionCounts[lesson.id] ?? 0,
       }))
-      .sort((a, b) => a.order - b.order)
+      .sort((a, b) => {
+        // Primary: latest created first
+        const aCreated = getCreatedAtMillis(a)
+        const bCreated = getCreatedAtMillis(b)
+        if (aCreated !== bCreated) {
+          return bCreated - aCreated
+        }
+        // Fallback: highest order first (newer lessons usually have higher order)
+        const aOrder = a.order ?? 0
+        const bOrder = b.order ?? 0
+        return bOrder - aOrder
+      })
+
+    // Add serial numbers based on sorted order (1 = latest)
+    return baseRows.map((row, index) => ({
+      ...row,
+      serialNumber: index + 1,
+    }))
   }, [lessons, grades, cachedAllUnits, allSections])
 
   const handleOpenNew = () => {
@@ -240,6 +263,13 @@ export function LessonsPage() {
   })
 
   const columns: Array<DataTableColumn<LessonTableRow>> = [
+    {
+      key: 'serialNumber',
+      header: 'S.No.',
+      width: '64px',
+      align: 'center',
+      render: (row) => <span className="text-xs text-muted-foreground">{row.serialNumber}</span>,
+    },
     { 
       key: 'title', 
       header: 'Lesson Title',
