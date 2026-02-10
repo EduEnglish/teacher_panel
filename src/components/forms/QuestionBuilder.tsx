@@ -135,6 +135,11 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     name: 'additionalWords' as never,
   })
 
+  const alternativeCorrectAnswersFieldArray = useFieldArray({
+    control: form.control,
+    name: 'alternativeCorrectAnswers' as never,
+  })
+
 
   useEffect(() => {
     const values = currentEditingQuestion ? mapQuestionToValues(currentEditingQuestion) : getDefaultValues(quiz.id, quiz.quizType)
@@ -266,7 +271,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                     )}
                     {isComposition && (
                       <p className="text-xs text-muted-foreground">
-                        Enter the composition topic or question title. Students will write their answer (under 200 words) which will be evaluated by AI.
+                        Enter the composition topic or question title. Students will write their answer (100 - 120 words) which will be evaluated by AI.
                       </p>
                     )}
                   </FormItem>
@@ -570,6 +575,54 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                   }}
                 />
                 <div className="space-y-3 border-t border-border pt-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <FormLabel>Alternative Correct Answers (Optional)</FormLabel>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => alternativeCorrectAnswersFieldArray.append('' as never)}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {alternativeCorrectAnswersFieldArray.fields.map((fieldItem, index) => (
+                        <FormField
+                          key={fieldItem.id}
+                          name={`alternativeCorrectAnswers.${index}` as const}
+                          render={({ field }) => (
+                            <FormItem className="space-y-2">
+                              <FormLabel className="text-xs font-semibold uppercase text-muted-foreground">
+                                Answer {index + 1}
+                              </FormLabel>
+                              <div className="flex items-start gap-2">
+                                <FormControl>
+                                  <Textarea
+                                    {...field}
+                                    rows={2}
+                                    placeholder="Another correct sentence order"
+                                  />
+                                </FormControl>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => alternativeCorrectAnswersFieldArray.remove(index)}
+                                >
+                                  ×
+                                </Button>
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <FormLabel>Additional Words (Optional)</FormLabel>
                     <Button
@@ -633,6 +686,45 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                   </FormItem>
                 )}
               />
+
+              <FormField
+                name="competitionTimerSeconds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Competition timer (seconds)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        placeholder={
+                          isSpelling
+                            ? 'Default: 30 seconds'
+                            : isOrderWords
+                              ? 'Default: 40 seconds'
+                              : isFillIn
+                                ? 'Default: 30 seconds'
+                                : 'Leave empty to use default'
+                        }
+                        value={field.value ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value
+                          if (raw === '') {
+                            field.onChange(undefined)
+                            return
+                          }
+                          const value = Number(raw)
+                          field.onChange(Number.isNaN(value) ? undefined : Math.max(0, value))
+                        }}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    <p className="text-xs text-muted-foreground">
+                      Used only in competitions. Leave empty to use the default per quiz type.
+                    </p>
+                  </FormItem>
+                )}
+              />
+
               <FormField
                 name="order"
                 render={({ field }) => (
@@ -769,6 +861,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
     case 'spelling':
       return {
@@ -779,6 +872,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
     case 'composition':
       return {
@@ -788,6 +882,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
     case 'matching':
       return {
@@ -801,6 +896,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
     case 'order-words':
       return {
@@ -809,6 +905,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         words: [], // Keep for schema validation, will be synced with correctOrder
         correctOrder: [],
         correctAnswer: '',
+        alternativeCorrectAnswers: [],
         instructionTitle: '',
         additionalWords: [],
         punctuation: [],
@@ -816,6 +913,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
     default:
       return {
@@ -827,6 +925,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         order: 1,
         points: 1,
         status: 'active',
+        competitionTimerSeconds: undefined,
       }
   }
 }
@@ -849,6 +948,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
       points: question.points ?? 1,
       order: question.order ?? 1,
       status: question.status ?? 'active',
+      competitionTimerSeconds: question.competitionTimerSeconds,
     }
   }
 
@@ -866,21 +966,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
       points: question.points ?? 1,
       order: question.order ?? 1,
       status: question.status ?? 'active',
-    }
-  }
-
-  if (question.type === 'matching') {
-    return {
-      ...question,
-      pairs: question.pairs.length
-        ? question.pairs
-        : [
-            { id: nanoid(), left: '', right: '' },
-            { id: nanoid(), left: '', right: '' },
-          ],
-      points: question.points ?? 1,
-      order: question.order ?? 1,
-      status: question.status ?? 'active',
+      competitionTimerSeconds: question.competitionTimerSeconds,
     }
   }
 
@@ -911,23 +997,21 @@ function mapQuestionToValues(question: Question): QuestionInput {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const questionPositionOrder = isOrderArray ? ((question as any).questionOrder ?? 1) : (typeof questionOrder === 'number' ? questionOrder : question.order ?? 1)
     
-    // Get punctuation from question, default to empty array
-    const punctuation = question.punctuation || []
-    // Get correctAnswer from question, default to empty string
-    const correctAnswer = question.correctAnswer || ''
-
     return {
       ...question,
       prompt: question.prompt || '',
       words: correctOrder, // Sync words with correctOrder for schema validation
       correctOrder: correctOrder,
-      correctAnswer: correctAnswer,
+      correctAnswer: question.correctAnswer || '',
+      // Surface any existing alternative correct sentences to the form
+      alternativeCorrectAnswers: question.alternativeCorrectAnswers ?? [],
       instructionTitle: question.instructionTitle || '',
       additionalWords: question.additionalWords || [],
-      punctuation: punctuation,
+      punctuation: question.punctuation || [],
       points: question.points ?? 1,
       order: questionPositionOrder, // Question position order (number)
       status: question.status ?? 'active',
+      competitionTimerSeconds: question.competitionTimerSeconds,
     }
   }
 
@@ -939,6 +1023,7 @@ function mapQuestionToValues(question: Question): QuestionInput {
       points: question.points ?? 1,
       order: question.order ?? 1,
       status: question.status ?? 'active',
+      competitionTimerSeconds: question.competitionTimerSeconds,
     }
   }
 

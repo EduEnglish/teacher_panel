@@ -28,11 +28,16 @@ export interface StudentAppQuestion {
   pairs?: Record<string, string> // For matching type
   order?: string[] // For order_words type - words only (without punctuation)
   correctAnswer?: string // For order_words type - complete correct answer sentence exactly as entered
+  // For order_words type - map of full correct sentences that should be accepted.
+  // Key = sentence, value = true if accepted as correct.
+  correctOrders?: Record<string, boolean>
   instructionTitle?: string // For order_words type - instruction text displayed above question
   additionalWords?: string[] // For order_words type - additional words mixed with correct answer
   punctuation?: string[] // For order_words type - punctuation marks separated from words
   hint?: string
   points: number
+  // Optional per-question competition timer (seconds). Used only in competition mode.
+  competitionTimerSeconds?: number
 }
 
 /**
@@ -61,6 +66,7 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
     order: undefined,
     hint: question.explanation,
     points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
   }
 }
 
@@ -87,6 +93,7 @@ function transformSpellingQuestion(question: SpellingQuestion): StudentAppQuesti
     order: undefined,
     hint: question.explanation,
     points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
   }
 }
 
@@ -113,15 +120,29 @@ function transformMatchingQuestion(question: MatchingQuestion): StudentAppQuesti
     order: undefined,
     hint: question.explanation,
     points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
   }
 }
 
 /**
  * Transform Order Words question to student app format
- * Teacher: { words: [], correctOrder: [] }
- * Student: { order: [] }
+ * Teacher: { words: [], correctOrder: [], correctAnswer, alternativeCorrectAnswers? }
+ * Student: { order: [], correctAnswer, correctOrders? }
  */
 function transformOrderWordsQuestion(question: OrderWordsQuestion): StudentAppQuestion {
+  // Build correctOrders map from correctAnswer + alternativeCorrectAnswers (if any).
+  const correctOrders: Record<string, boolean> = {}
+  if (question.correctAnswer && question.correctAnswer.trim().length > 0) {
+    correctOrders[question.correctAnswer.trim()] = true
+  }
+  if (question.alternativeCorrectAnswers && question.alternativeCorrectAnswers.length > 0) {
+    for (const alt of question.alternativeCorrectAnswers) {
+      const trimmed = alt.trim()
+      if (!trimmed) continue
+      correctOrders[trimmed] = true
+    }
+  }
+  
   return {
     id: question.id,
     prompt: question.prompt,
@@ -130,11 +151,13 @@ function transformOrderWordsQuestion(question: OrderWordsQuestion): StudentAppQu
     pairs: undefined,
     order: question.correctOrder ?? question.words ?? [],
     correctAnswer: question.correctAnswer,
+    correctOrders: Object.keys(correctOrders).length > 0 ? correctOrders : undefined,
     instructionTitle: question.instructionTitle,
     additionalWords: question.additionalWords,
     punctuation: question.punctuation,
     hint: question.explanation,
     points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
   }
 }
 
@@ -153,6 +176,7 @@ function transformCompositionQuestion(question: CompositionQuestion): StudentApp
     order: undefined,
     hint: question.explanation,
     points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
   }
 }
 
@@ -277,6 +301,9 @@ export function prepareQuizDocumentForFirestore(
         if (q.correctAnswer) {
           questionObj.correctAnswer = q.correctAnswer
         }
+        if (q.correctOrders && Object.keys(q.correctOrders).length > 0) {
+          questionObj.correctOrders = q.correctOrders
+        }
         if (q.instructionTitle) {
           questionObj.instructionTitle = q.instructionTitle
         }
@@ -291,6 +318,11 @@ export function prepareQuizDocumentForFirestore(
       // Add hint if present
       if (q.hint) {
         questionObj.hint = q.hint
+      }
+
+      // Add competition timer if present
+      if (typeof q.competitionTimerSeconds === 'number') {
+        questionObj.competitionTimerSeconds = q.competitionTimerSeconds
       }
 
       return questionObj

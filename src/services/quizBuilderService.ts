@@ -274,9 +274,29 @@ export async function getQuizWithQuestions(
       }))
     }
 
-    // Transform order_words to order-words type
+    // Transform order_words to order-words type and derive alternative sentences
     if (q.type === 'order_words') {
       question.type = 'order-words'
+
+      // If correctOrders map is present (student app format), derive
+      // correctAnswer + alternativeCorrectAnswers for teacher panel editing.
+      if (q.correctOrders && typeof q.correctOrders === 'object') {
+        const entries = Object.entries(q.correctOrders as Record<string, boolean>)
+          .filter(([sentence, value]) => !!sentence && value === true)
+          .map(([sentence]) => sentence)
+        if (entries.length > 0) {
+          // Prefer existing correctAnswer if it matches one of the map keys
+          const existing = typeof q.correctAnswer === 'string' ? q.correctAnswer : ''
+          const baseSentence = existing && entries.includes(existing) ? existing : entries[0]
+
+          question.correctAnswer = baseSentence
+          // All other true sentences become alternatives for the form
+          const alternatives = entries.filter((s) => s !== baseSentence)
+          if (alternatives.length > 0) {
+            ;(question as any).alternativeCorrectAnswers = alternatives
+          }
+        }
+      }
     }
 
     // Transform fill_blank to fill-in type

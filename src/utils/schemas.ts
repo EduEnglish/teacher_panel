@@ -90,6 +90,10 @@ export const fillInQuestionSchema = z.object({
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
   status: statusSchema.default('active'),
+  competitionTimerSeconds: z
+    .number()
+    .min(0, 'Timer must be 0 or more seconds')
+    .optional(),
 })
 
 export const spellingQuestionSchema = z.object({
@@ -101,6 +105,10 @@ export const spellingQuestionSchema = z.object({
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
   status: statusSchema.default('active'),
+  competitionTimerSeconds: z
+    .number()
+    .min(0, 'Timer must be 0 or more seconds')
+    .optional(),
 })
 
 export const matchingQuestionSchema = z.object({
@@ -120,6 +128,10 @@ export const matchingQuestionSchema = z.object({
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
   status: statusSchema.default('active'),
+  competitionTimerSeconds: z
+    .number()
+    .min(0, 'Timer must be 0 or more seconds')
+    .optional(),
 })
 
 export const orderWordsQuestionSchema = z.object({
@@ -129,6 +141,9 @@ export const orderWordsQuestionSchema = z.object({
   words: z.array(z.string().min(1)).min(2, 'Add at least two words'),
   correctOrder: z.array(z.string().min(1)).min(2, 'Provide the correct order'),
   correctAnswer: z.string().optional(), // Complete correct answer sentence exactly as entered
+  // Optional additional full-sentence variants that are also accepted as correct.
+  // These are used only for validation; the word bank is still built from correctAnswer.
+  alternativeCorrectAnswers: z.array(z.string().min(1)).optional(),
   instructionTitle: z.string().optional(), // Optional instruction text for mobile app
   additionalWords: z.array(z.string().min(1)).optional(), // Additional words for distraction
   punctuation: z.array(z.string().min(1)).optional(), // Punctuation marks separated from words
@@ -136,6 +151,10 @@ export const orderWordsQuestionSchema = z.object({
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
   status: statusSchema.default('active'),
+  competitionTimerSeconds: z
+    .number()
+    .min(0, 'Timer must be 0 or more seconds')
+    .optional(),
 })
 
 export const compositionQuestionSchema = z.object({
@@ -146,6 +165,10 @@ export const compositionQuestionSchema = z.object({
   order: z.number().min(1),
   points: z.number().min(1, 'Points must be at least 1').default(1),
   status: statusSchema.default('active'),
+  competitionTimerSeconds: z
+    .number()
+    .min(0, 'Timer must be 0 or more seconds')
+    .optional(),
 })
 
 export const adminSettingsSchema = z.object({

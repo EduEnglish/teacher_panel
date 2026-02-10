@@ -84,6 +84,8 @@ export interface QuestionBase extends BaseEntity {
   order: number
   difficulty?: 'easy' | 'medium' | 'hard'
   points: number // Required points field (defaults to 1)
+  // Optional per-question competition timer (seconds). Used only in competition mode.
+  competitionTimerSeconds?: number
 }
 
 export interface FillInQuestion extends QuestionBase {
@@ -108,6 +110,9 @@ export interface OrderWordsQuestion extends QuestionBase {
   words: string[]
   correctOrder: string[]
   correctAnswer?: string // Complete correct answer sentence exactly as entered (e.g., "This is Sara's book")
+  // Optional: additional full-sentence variants that should also be accepted as correct.
+  // These are transformed into a correctOrders map for the student app.
+  alternativeCorrectAnswers?: string[]
   instructionTitle?: string // Optional instruction text displayed above the question in mobile app
   additionalWords?: string[] // Additional words to mix with correct answer words for distraction
   punctuation?: string[] // Punctuation marks separated from words
