@@ -8,6 +8,7 @@ import type { Question, SpellingQuestion } from '@/types/models'
 export function renderQuestionPreview(question: Question) {
   switch (question.type) {
     case 'fill-in':
+    case 'drag-drop': {
       const blanks = question.blanks || []
       return (
         <div className="space-y-2">
@@ -27,6 +28,7 @@ export function renderQuestionPreview(question: Question) {
           </div>
         </div>
       )
+    }
     case 'spelling': {
       // Handle both array format and single answer (backward compatibility)
       const questionWithAnswer = question as SpellingQuestion & { answer?: string }

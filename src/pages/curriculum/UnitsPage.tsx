@@ -159,6 +159,7 @@ export function UnitsPage() {
       title: 'Delete unit?',
       description: `Are you sure you want to delete Unit ${unit.number}?`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -173,8 +174,9 @@ export function UnitsPage() {
       await hierarchicalUnitService.remove(unit.gradeId, unit.id)
       // Log action manually since hierarchical service doesn't do it
       await gradeService.update(unit.gradeId, {}, user.uid, { action: 'delete_unit', unitId: unit.id })
-      notifySuccess('Unit deleted successfully')
+      setUnits((prev) => prev.filter((u) => u.id !== unit.id))
       refreshUnits() // Refresh cache
+      notifySuccess('Unit deleted successfully')
     } catch (error) {
       notifyError('Unable to delete unit', error instanceof Error ? error.message : undefined)
     }

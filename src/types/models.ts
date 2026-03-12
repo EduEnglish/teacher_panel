@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore'
 
 export type EntityStatus = 'active' | 'inactive'
-export type QuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words' | 'composition'
+export type QuizType = 'fill-in' | 'drag-drop' | 'spelling' | 'matching' | 'order-words' | 'composition'
 export type LessonType = 'Grammar' | 'Vocabulary' | 'Passages' | 'Literature' | 'Composition'
 export type NotificationAudience = 'all' | 'grade' | 'unit' | 'lesson' | 'custom'
 export type NotificationStatus = 'draft' | 'scheduled' | 'sent' | 'cancelled'
@@ -95,6 +95,13 @@ export interface FillInQuestion extends QuestionBase {
   options?: string[] // Optional multiple choice options (for backward compatibility)
 }
 
+export interface DragDropQuestion extends QuestionBase {
+  type: 'drag-drop'
+  blanks: Array<{ id: string; answer: string; options?: string[] }> // Same shape as fill-in; student app uses drag-drop UI
+  sentence?: string
+  options?: string[]
+}
+
 export interface SpellingQuestion extends QuestionBase {
   type: 'spelling'
   answers: string[] // Array of answers (can have multiple)
@@ -124,7 +131,7 @@ export interface CompositionQuestion extends QuestionBase {
   // No answers needed - evaluated by AI
 }
 
-export type Question = FillInQuestion | SpellingQuestion | MatchingQuestion | OrderWordsQuestion | CompositionQuestion
+export type Question = FillInQuestion | DragDropQuestion | SpellingQuestion | MatchingQuestion | OrderWordsQuestion | CompositionQuestion
 
 export interface PracticeAggregate extends BaseEntity {
   gradeId?: string

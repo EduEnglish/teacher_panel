@@ -25,7 +25,7 @@ export function GradesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingGrade, setEditingGrade] = useState<Grade | null>(null)
 
-  const { data: grades, isLoading: gradesLoading } = useCollection<Grade>(gradeService.listen)
+  const { data: grades, isLoading: gradesLoading, refetch: refetchGrades } = useCollection<Grade>(gradeService.listen)
   const [allUnits, setAllUnits] = useState<Unit[]>([])
 
   // Load all units from all grades (for counting)
@@ -159,6 +159,7 @@ export function GradesPage() {
       title: 'Delete grade?',
       description: `Are you sure you want to delete "${grade.name}"? Related units and lessons will stay orphaned.`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -167,6 +168,7 @@ export function GradesPage() {
     }
     try {
       await gradeService.remove(grade.id, user.uid, { name: grade.name })
+      refetchGrades()
       notifySuccess('Grade deleted')
     } catch (error) {
       notifyError('Unable to delete grade', error instanceof Error ? error.message : undefined)

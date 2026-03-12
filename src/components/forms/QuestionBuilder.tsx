@@ -10,11 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import {
   fillInQuestionSchema,
+  dragDropQuestionSchema,
   matchingQuestionSchema,
   orderWordsQuestionSchema,
   spellingQuestionSchema,
   compositionQuestionSchema,
   type FillInQuestionFormValues,
+  type DragDropQuestionFormValues,
   type MatchingQuestionFormValues,
   type OrderWordsQuestionFormValues,
   type SpellingQuestionFormValues,
@@ -35,6 +37,7 @@ type QuestionBuilderProps = {
 
 type QuestionInput =
   | FillInQuestionFormValues
+  | DragDropQuestionFormValues
   | SpellingQuestionFormValues
   | MatchingQuestionFormValues
   | OrderWordsQuestionFormValues
@@ -47,28 +50,30 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null)
   const [orderWordsSentence, setOrderWordsSentence] = useState<string>('')
   
-  // State for comma-separated options input for each blank
+  // State for quick-add options input for each blank (slash-separated)
   const [commaOptionsInputs, setCommaOptionsInputs] = useState<Record<number, string>>({})
 
-  // Function to parse comma-separated options
-  const parseCommaOptions = (input: string): string[] => {
+  // Which option is currently being edited (click-to-edit): { blankIndex, optionIndex }
+  const [editingOption, setEditingOption] = useState<{ blankIndex: number; optionIndex: number } | null>(null)
+
+  // Parse quick-add input: split by slash (/) so options may contain commas
+  const parseQuickAddOptions = (input: string): string[] => {
     return input
-      .split(',')
+      .split('/')
       .map(option => option.trim())
       .filter(option => option.length > 0)
   }
 
-  // Function to handle adding comma-separated options
+  // Function to handle adding slash-separated options
   const handleAddCommaOptions = (blankIndex: number) => {
     const input = commaOptionsInputs[blankIndex] || ''
-    const parsedOptions = parseCommaOptions(input)
+    const parsedOptions = parseQuickAddOptions(input)
     
     if (parsedOptions.length > 0) {
       const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
       const updated = [...current, ...parsedOptions]
       form.setValue(`blanks.${blankIndex}.options`, updated)
       
-      // Clear the input field after adding
       setCommaOptionsInputs(prev => ({
         ...prev,
         [blankIndex]: ''
@@ -76,11 +81,23 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     }
   }
 
+  // Update a single option (after inline edit)
+  const updateOption = (blankIndex: number, optionIndex: number, newValue: string) => {
+    const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
+    const updated = [...current]
+    updated[optionIndex] = newValue.trim()
+    form.setValue(`blanks.${blankIndex}.options`, updated)
+    setEditingOption(null)
+  }
+
   // Function to remove a specific option
   const removeOption = (blankIndex: number, optionIndex: number) => {
     const current = form.getValues(`blanks.${blankIndex}.options`) as string[] || []
     const updated = current.filter((_, idx) => idx !== optionIndex)
     form.setValue(`blanks.${blankIndex}.options`, updated)
+    if (editingOption?.blankIndex === blankIndex && editingOption?.optionIndex === optionIndex) {
+      setEditingOption(null)
+    }
   }
   
   // Use external editingQuestion if provided, otherwise use internal state
@@ -95,6 +112,8 @@ export function QuestionBuilder({ quiz, questions, onCreate, onUpdate, onDelete,
     switch (quiz.quizType) {
       case 'fill-in':
         return fillInQuestionSchema
+      case 'drag-drop':
+        return dragDropQuestionSchema
       case 'spelling':
         return spellingQuestionSchema
       case 'matching':
@@ -195,6 +214,8 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
   switch (quizType) {
     case 'fill-in':
       return 'fill-in'
+    case 'drag-drop':
+      return 'drag-drop'
     case 'spelling':
       return 'spelling'
     case 'matching':
@@ -209,7 +230,7 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
 }
 
 
-  const isFillIn = quiz.quizType === 'fill-in'
+  const isFillIn = quiz.quizType === 'fill-in' || quiz.quizType === 'drag-drop'
   const isSpelling = quiz.quizType === 'spelling'
   const isMatching = quiz.quizType === 'matching'
   const isOrderWords = quiz.quizType === 'order-words'
@@ -323,8 +344,14 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                                 : `Correct Answer for Blank ${blankIndex + 1}`}
                             </FormLabel>
                             <FormControl>
-                              <Input {...field} placeholder="Enter correct answer" />
+                              <Input
+                                {...field}
+                                placeholder="e.g., bandage or cream / medicine / pills / bandage / plaster"
+                              />
                             </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              You can enter multiple correct answers separated by &quot;/&quot; — if the student gives any one of them, it will be marked correct.
+                            </p>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -338,14 +365,14 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                           </FormLabel>
                         </div>
                         
-                        {/* Comma-separated options input */}
+                        {/* Quick-add options (slash-separated so options may contain commas) */}
                         <div className="space-y-2">
                           <FormLabel className="text-xs text-muted-foreground">
-                            Quick Add Options (comma-separated)
+                            Quick Add Options (slash-separated)
                           </FormLabel>
                           <div className="flex gap-2">
                             <Input
-                              placeholder="e.g., cat, dog, bird, fish"
+                              placeholder="e.g., option one / option two / I like apples, oranges and bananas"
                               value={commaOptionsInputs[blankIndex] || ''}
                               onChange={(e) => {
                                 setCommaOptionsInputs(prev => ({
@@ -371,31 +398,62 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
                             </Button>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Enter multiple options separated by commas. Extra spaces will be automatically cleaned.
+                            Separate options with a slash (/). Options may contain commas. Extra spaces are trimmed.
                           </p>
                         </div>
                         
-                        {/* Display current options */}
+                        {/* Display current options (click to edit) */}
                         <div className="space-y-2">
                           <FormLabel className="text-xs text-muted-foreground">
                             Current Options ({currentOptions.length})
                           </FormLabel>
                           {currentOptions.length > 0 ? (
                             <div className="space-y-2">
-                              {currentOptions.map((option, optionIndex) => (
-                                <div key={optionIndex} className="flex items-center justify-between bg-muted/50 rounded-md p-2">
-                                  <span className="text-sm">{option}</span>
-                                  <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6"
-                                    onClick={() => removeOption(blankIndex, optionIndex)}
-                                  >
-                                    ×
-                                  </Button>
-                                </div>
-                              ))}
+                              {currentOptions.map((option, optionIndex) => {
+                                const isEditing = editingOption?.blankIndex === blankIndex && editingOption?.optionIndex === optionIndex
+                                return (
+                                  <div key={optionIndex} className="flex items-center gap-2 bg-muted/50 rounded-md p-2">
+                                    {isEditing ? (
+                                      <Input
+                                        className="flex-1 text-sm"
+                                        defaultValue={option}
+                                        autoFocus
+                                        onBlur={(e) => {
+                                          const v = e.target.value.trim()
+                                          if (!v) removeOption(blankIndex, optionIndex)
+                                          else if (v !== option) updateOption(blankIndex, optionIndex, v)
+                                          setEditingOption(null)
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            const v = (e.target as HTMLInputElement).value.trim()
+                                            if (!v) removeOption(blankIndex, optionIndex)
+                                            else if (v !== option) updateOption(blankIndex, optionIndex, v)
+                                            setEditingOption(null)
+                                          }
+                                        }}
+                                      />
+                                    ) : (
+                                      <span
+                                        className="flex-1 text-sm cursor-pointer min-h-[2rem] flex items-center rounded px-1 -mx-1 hover:bg-muted/50"
+                                        onClick={() => setEditingOption({ blankIndex, optionIndex })}
+                                        title="Click to edit"
+                                      >
+                                        {option}
+                                      </span>
+                                    )}
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-6 w-6 shrink-0"
+                                      onClick={() => removeOption(blankIndex, optionIndex)}
+                                    >
+                                      ×
+                                    </Button>
+                                  </div>
+                                )
+                              })}
                             </div>
                           ) : (
                             <p className="text-xs text-muted-foreground italic">
@@ -863,6 +921,18 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
         status: 'active',
         competitionTimerSeconds: undefined,
       }
+    case 'drag-drop':
+      return {
+        quizId,
+        prompt: '',
+        blanks: [{ id: nanoid(), answer: '', options: [] }],
+        options: [],
+        type: 'drag-drop',
+        order: 1,
+        points: 1,
+        status: 'active',
+        competitionTimerSeconds: undefined,
+      }
     case 'spelling':
       return {
         quizId,
@@ -931,7 +1001,7 @@ function getDefaultValues(quizId: string, quizType: Quiz['quizType']): QuestionI
 }
 
 function mapQuestionToValues(question: Question): QuestionInput {
-  if (question.type === 'fill-in') {
+  if (question.type === 'fill-in' || question.type === 'drag-drop') {
     // Ensure each blank has options array (for backward compatibility, migrate old options to first blank)
     const blanks = question.blanks.length 
       ? question.blanks.map(blank => ({

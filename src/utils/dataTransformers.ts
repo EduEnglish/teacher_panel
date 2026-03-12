@@ -6,6 +6,7 @@
 
 import type {
   FillInQuestion,
+  DragDropQuestion,
   MatchingQuestion,
   OrderWordsQuestion,
   CompositionQuestion,
@@ -21,7 +22,7 @@ import { mapToStudentQuizType, type StudentQuizType } from './quizTypeMapper'
 export interface StudentAppQuestion {
   id: string
   prompt: string
-  type: 'fill_blank' | 'spelling' | 'matching' | 'order_words' | 'composition'
+  type: 'fill_blank' | 'drag_drop' | 'spelling' | 'matching' | 'order_words' | 'composition'
   options?: string[] // Optional, for fill_blank multiple choice (for backward compatibility)
   blankOptions?: string[][] // Per-blank options: blankOptions[0] = options for blank 1, blankOptions[1] = options for blank 2, etc.
   answers: string[] // Array of answers
@@ -62,6 +63,28 @@ function transformFillInQuestion(question: FillInQuestion): StudentAppQuestion {
     options: undefined, // No longer using global options - only blankOptions
     blankOptions: blankOptions.length > 0 ? blankOptions : undefined, // Per-blank options
     answers: answers,
+    pairs: undefined,
+    order: undefined,
+    hint: question.explanation,
+    points: question.points ?? 1,
+    competitionTimerSeconds: question.competitionTimerSeconds,
+  }
+}
+
+/**
+ * Transform Drag & Drop question to student app format (same shape as fill-in; app shows drag-drop UI)
+ */
+function transformDragDropQuestion(question: DragDropQuestion): StudentAppQuestion {
+  const answers = question.blanks.map((blank) => blank.answer.trim()).filter(Boolean)
+  const blankOptions = question.blanks.map((blank) => blank.options || [])
+  const studentPrompt = question.prompt?.trim() || (question as any).sentence?.trim() || ''
+  return {
+    id: question.id,
+    prompt: studentPrompt,
+    type: 'drag_drop',
+    options: undefined,
+    blankOptions: blankOptions.length > 0 ? blankOptions : undefined,
+    answers,
     pairs: undefined,
     order: undefined,
     hint: question.explanation,
@@ -187,6 +210,8 @@ export function transformQuestion(question: Question): StudentAppQuestion {
   switch (question.type) {
     case 'fill-in':
       return transformFillInQuestion(question)
+    case 'drag-drop':
+      return transformDragDropQuestion(question)
     case 'spelling':
       return transformSpellingQuestion(question)
     case 'matching':
@@ -276,11 +301,9 @@ export function prepareQuizDocumentForFirestore(
       }
 
       // Add type-specific fields
-      if (q.type === 'fill_blank') {
+      if (q.type === 'fill_blank' || q.type === 'drag_drop') {
         // Only save blankOptions, not global options
         if (q.blankOptions && q.blankOptions.length > 0) {
-          // Convert nested array to object format for Firestore compatibility
-          // Firestore doesn't support nested arrays, so we use an object with numeric keys
           const blankOptionsObj: Record<string, string[]> = {}
           q.blankOptions.forEach((opts, index) => {
             if (opts.length > 0) {

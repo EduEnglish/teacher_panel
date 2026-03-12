@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // const lessonTypes = ['Grammar', 'Vocabulary', 'Reading', 'Listening'] as const
-const quizTypes = ['fill-in', 'spelling', 'matching', 'order-words', 'composition'] as const
+const quizTypes = ['fill-in', 'drag-drop', 'spelling', 'matching', 'order-words', 'composition'] as const
 const notificationAudienceTypes = ['all', 'grade', 'unit', 'lesson', 'custom'] as const
 const notificationChannels = ['in-app', 'email', 'push'] as const
 const notificationStatuses = ['draft', 'scheduled', 'sent', 'cancelled'] as const
@@ -94,6 +94,10 @@ export const fillInQuestionSchema = z.object({
     .number()
     .min(0, 'Timer must be 0 or more seconds')
     .optional(),
+})
+
+export const dragDropQuestionSchema = fillInQuestionSchema.extend({
+  type: z.literal('drag-drop'),
 })
 
 export const spellingQuestionSchema = z.object({
@@ -231,6 +235,7 @@ export type LessonFormValues = z.infer<typeof lessonSchema>
 export type SectionFormValues = z.infer<typeof sectionSchema>
 export type QuizFormValues = z.infer<typeof quizSchema>
 export type FillInQuestionFormValues = z.infer<typeof fillInQuestionSchema>
+export type DragDropQuestionFormValues = z.infer<typeof dragDropQuestionSchema>
 export type SpellingQuestionFormValues = z.infer<typeof spellingQuestionSchema>
 export type MatchingQuestionFormValues = z.infer<typeof matchingQuestionSchema>
 export type OrderWordsQuestionFormValues = z.infer<typeof orderWordsQuestionSchema>

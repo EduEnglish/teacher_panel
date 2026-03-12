@@ -50,6 +50,7 @@ export function QuizzesPage() {
   
   const [quizzes, setQuizzes] = useState<Quiz[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [quizzesRefreshKey, setQuizzesRefreshKey] = useState(0)
 
   // Redirect if params are missing
   useEffect(() => {
@@ -93,7 +94,7 @@ export function QuizzesPage() {
         notifyError('Unable to load quizzes', error instanceof Error ? error.message : undefined)
         setIsLoading(false)
       })
-  }, [gradeId, unitId, lessonId, sectionId, notifyError])
+  }, [gradeId, unitId, lessonId, sectionId, quizzesRefreshKey, notifyError])
 
   useEffect(() => {
     setPageTitle('Quizzes')
@@ -165,6 +166,7 @@ export function QuizzesPage() {
       title: 'Delete quiz?',
       description: `Are you sure you want to delete "${quiz.title}"?`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -177,8 +179,10 @@ export function QuizzesPage() {
         return
       }
       await deleteQuizWithQuestions(quiz.gradeId, quiz.unitId, quiz.lessonId, quiz.sectionId, quiz.id, user.uid)
-      notifySuccess('Quiz deleted successfully')
+      setQuizzes((prev) => prev.filter((q) => q.id !== quiz.id))
+      setQuizzesRefreshKey((k) => k + 1)
       refreshQuizzes() // Refresh cache
+      notifySuccess('Quiz deleted successfully')
     } catch (error) {
       notifyError('Unable to delete quiz', error instanceof Error ? error.message : undefined)
     }

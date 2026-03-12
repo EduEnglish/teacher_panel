@@ -42,6 +42,7 @@ export const lessonTitleOptions = [
 
 export const quizTypeOptions = [
   { value: 'fill-in', label: 'Fill in the Blanks' },
+  { value: 'drag-drop', label: 'Drag & Drop' },
   { value: 'spelling', label: 'Spelling' },
   { value: 'matching', label: 'Matching' },
   { value: 'order-words', label: 'Order Words' },

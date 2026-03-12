@@ -310,13 +310,11 @@ export async function getQuizWithQuestions(
           options: [], // Initialize empty options array
         }))
       }
-      
+
       // Handle blankOptions - convert from object format (Firestore) back to nested array
       if (q.blankOptions) {
         if (Array.isArray(q.blankOptions)) {
-          // Already in array format (backward compatibility or direct array)
           const blankOptionsArray = q.blankOptions as string[][]
-          // Update blanks with per-blank options
           if (question.blanks && Array.isArray(question.blanks)) {
             blankOptionsArray.forEach((opts, index) => {
               if (question.blanks && question.blanks[index]) {
@@ -325,14 +323,50 @@ export async function getQuizWithQuestions(
             })
           }
         } else if (typeof q.blankOptions === 'object') {
-          // Convert from object format (Firestore) to nested array
           const blankOptionsObj = q.blankOptions as Record<string, string[]>
           const blankOptionsArray: string[][] = []
           const keys = Object.keys(blankOptionsObj).sort((a, b) => Number(a) - Number(b))
           keys.forEach((key) => {
             blankOptionsArray[Number(key)] = blankOptionsObj[key]
           })
-          // Update blanks with per-blank options
+          if (question.blanks && Array.isArray(question.blanks)) {
+            blankOptionsArray.forEach((opts, index) => {
+              if (question.blanks && question.blanks[index]) {
+                question.blanks[index].options = opts
+              }
+            })
+          }
+        }
+      }
+    }
+
+    // Transform drag_drop to drag-drop type (same shape as fill_blank)
+    if (q.type === 'drag_drop') {
+      question.type = 'drag-drop'
+      if (q.answers && Array.isArray(q.answers) && (!question.blanks || question.blanks.length === 0)) {
+        question.blanks = q.answers.map((answer: string, index: number) => ({
+          id: `blank_${index}`,
+          answer,
+          options: [],
+        }))
+      }
+      if (q.blankOptions) {
+        if (Array.isArray(q.blankOptions)) {
+          const blankOptionsArray = q.blankOptions as string[][]
+          if (question.blanks && Array.isArray(question.blanks)) {
+            blankOptionsArray.forEach((opts, index) => {
+              if (question.blanks && question.blanks[index]) {
+                question.blanks[index].options = opts
+              }
+            })
+          }
+        } else if (typeof q.blankOptions === 'object') {
+          const blankOptionsObj = q.blankOptions as Record<string, string[]>
+          const blankOptionsArray: string[][] = []
+          const keys = Object.keys(blankOptionsObj).sort((a, b) => Number(a) - Number(b))
+          keys.forEach((key) => {
+            blankOptionsArray[Number(key)] = blankOptionsObj[key]
+          })
           if (question.blanks && Array.isArray(question.blanks)) {
             blankOptionsArray.forEach((opts, index) => {
               if (question.blanks && question.blanks[index]) {

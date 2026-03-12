@@ -187,6 +187,7 @@ export function LessonsPage() {
       title: 'Delete lesson?',
       description: `Are you sure you want to delete "${lesson.title}"?`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -199,8 +200,9 @@ export function LessonsPage() {
         return
       }
       await hierarchicalLessonService.remove(lesson.gradeId, lesson.unitId, lesson.id)
-      notifySuccess('Lesson deleted successfully')
+      setLessons((prev) => prev.filter((l) => l.id !== lesson.id))
       refreshLessons() // Refresh cache
+      notifySuccess('Lesson deleted successfully')
     } catch (error) {
       notifyError('Unable to delete lesson', error instanceof Error ? error.message : undefined)
     }

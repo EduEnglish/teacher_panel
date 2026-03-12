@@ -210,6 +210,7 @@ export function SectionsPage() {
       title: 'Delete section?',
       description: `Are you sure you want to delete "${section.title}"?`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -222,8 +223,9 @@ export function SectionsPage() {
         return
       }
       await hierarchicalSectionService.remove(section.gradeId, section.unitId, section.lessonId, section.id)
-      notifySuccess('Section deleted successfully')
+      setSections((prev) => prev.filter((s) => s.id !== section.id))
       refreshSections() // Refresh cache
+      notifySuccess('Section deleted successfully')
     } catch (error) {
       notifyError('Unable to delete section', error instanceof Error ? error.message : undefined)
     }

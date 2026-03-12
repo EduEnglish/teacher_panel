@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { QueryConstraint } from 'firebase/firestore'
 
 type Listener<T> = (callback: (items: T[]) => void, constraints?: QueryConstraint[]) => () => void
@@ -6,6 +6,9 @@ type Listener<T> = (callback: (items: T[]) => void, constraints?: QueryConstrain
 export function useCollection<T>(listener: Listener<T>, constraints?: QueryConstraint[]) {
   const [data, setData] = useState<T[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const refetch = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   useEffect(() => {
     setIsLoading(true)
@@ -17,9 +20,10 @@ export function useCollection<T>(listener: Listener<T>, constraints?: QueryConst
       constraints,
     )
     return () => unsubscribe()
-  }, [listener, constraints])
+    // listener/constraints must be stable (e.g. gradeService.listen) to avoid repeated subscriptions
+  }, [listener, constraints, refreshKey])
 
-  return { data, isLoading }
+  return { data, isLoading, refetch }
 }
 
 

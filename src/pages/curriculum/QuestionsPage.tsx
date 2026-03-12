@@ -10,7 +10,7 @@ import { PageLoader } from '@/components/feedback/PageLoader'
 import { getQuizWithQuestions, updateQuizWithQuestions } from '@/services/quizBuilderService'
 import { useCurriculumCache } from '@/context/CurriculumCacheContext'
 import type { Question, Quiz } from '@/types/models'
-import type { FillInQuestionFormValues, SpellingQuestionFormValues, MatchingQuestionFormValues, OrderWordsQuestionFormValues, CompositionQuestionFormValues } from '@/utils/schemas'
+import type { FillInQuestionFormValues, DragDropQuestionFormValues, SpellingQuestionFormValues, MatchingQuestionFormValues, OrderWordsQuestionFormValues, CompositionQuestionFormValues } from '@/utils/schemas'
 import { useAuth } from '@/context/AuthContext'
 import { useUI } from '@/context/UIContext'
 
@@ -19,6 +19,8 @@ function getQuestionTypeFromQuizType(quizType: Quiz['quizType']): Question['type
   switch (quizType) {
     case 'fill-in':
       return 'fill-in'
+    case 'drag-drop':
+      return 'drag-drop'
     case 'spelling':
       return 'spelling'
     case 'matching':
@@ -173,6 +175,7 @@ export function QuestionsPage() {
       title: 'Delete question?',
       description: `Are you sure you want to delete this question?`,
       confirmLabel: 'Delete',
+      danger: true,
     })
     if (!confirmed) return
     if (!user?.uid) {
@@ -211,21 +214,15 @@ export function QuestionsPage() {
         user.uid,
       )
 
-      notifySuccess('Question deleted successfully')
+      setQuestions((prev) => prev.filter((q) => q.id !== question.id))
       refreshQuizzes() // Refresh cache
-      // Reload questions for current quiz
-      if (gradeId && unitId && lessonId && sectionId && quizId) {
-        const result = await getQuizWithQuestions(gradeId, unitId, lessonId, sectionId, quizId)
-        if (result) {
-          setQuestions(result.questions || [])
-        }
-      }
+      notifySuccess('Question deleted successfully')
     } catch (error) {
       notifyError('Unable to delete question', error instanceof Error ? error.message : undefined)
     }
   }
 
-  const handleCreateQuestion = async (values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
+  const handleCreateQuestion = async (values: FillInQuestionFormValues | DragDropQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
     if (!user?.uid || !quizId || !currentQuiz) {
       notifyError('Missing quiz', 'Quiz ID is missing')
       return
@@ -294,7 +291,7 @@ export function QuestionsPage() {
     }
   }
 
-  const handleUpdateQuestion = async (id: string, values: FillInQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
+  const handleUpdateQuestion = async (id: string, values: FillInQuestionFormValues | DragDropQuestionFormValues | SpellingQuestionFormValues | MatchingQuestionFormValues | OrderWordsQuestionFormValues | CompositionQuestionFormValues) => {
     if (!user?.uid || !quizId || !currentQuiz) {
       notifyError('Missing quiz', 'Quiz ID is missing')
       return

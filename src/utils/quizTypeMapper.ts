@@ -5,8 +5,8 @@
  * Teacher panel uses: fill-in, spelling, matching, order-words
  */
 
-export type TeacherQuizType = 'fill-in' | 'spelling' | 'matching' | 'order-words' | 'composition'
-export type StudentQuizType = 'fill_blank' | 'spelling' | 'matching' | 'order_words' | 'composition'
+export type TeacherQuizType = 'fill-in' | 'drag-drop' | 'spelling' | 'matching' | 'order-words' | 'composition'
+export type StudentQuizType = 'fill_blank' | 'drag_drop' | 'spelling' | 'matching' | 'order_words' | 'composition'
 
 /**
  * Maps teacher panel quiz type to student app quiz type
@@ -14,6 +14,7 @@ export type StudentQuizType = 'fill_blank' | 'spelling' | 'matching' | 'order_wo
 export function mapToStudentQuizType(teacherType: TeacherQuizType): StudentQuizType {
   const mapping: Record<TeacherQuizType, StudentQuizType> = {
     'fill-in': 'fill_blank',
+    'drag-drop': 'drag_drop',
     'spelling': 'spelling',
     'matching': 'matching',
     'order-words': 'order_words',
@@ -29,6 +30,8 @@ export function mapToTeacherQuizType(studentType: string): TeacherQuizType {
   const mapping: Record<string, TeacherQuizType> = {
     'fill_blank': 'fill-in',
     'fill-in': 'fill-in',
+    'drag_drop': 'drag-drop',
+    'drag-drop': 'drag-drop',
     'spelling': 'spelling',
     'matching': 'matching',
     'order_words': 'order-words',
@@ -42,6 +45,6 @@ export function mapToTeacherQuizType(studentType: string): TeacherQuizType {
  * Validates if quiz type is valid for student app
  */
 export function isValidStudentQuizType(type: string): type is StudentQuizType {
-  return ['fill_blank', 'spelling', 'matching', 'order_words', 'composition'].includes(type)
+  return ['fill_blank', 'drag_drop', 'spelling', 'matching', 'order_words', 'composition'].includes(type)
 }
 

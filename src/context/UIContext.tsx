@@ -9,7 +9,7 @@ type UIContextValue = {
   setPageTitle: (title: string) => void
   notifySuccess: (message: string, description?: string) => void
   notifyError: (message: string, description?: string) => void
-  confirmAction: (options: { title: string; description: string; confirmLabel?: string }) => Promise<boolean>
+  confirmAction: (options: { title: string; description: string; confirmLabel?: string; danger?: boolean }) => Promise<boolean>
 }
 
 const UIContext = createContext<UIContextValue | undefined>(undefined)
@@ -35,7 +35,17 @@ export function UIProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const confirmAction = useCallback(
-    ({ title, description, confirmLabel = 'Confirm' }: { title: string; description: string; confirmLabel?: string }) =>
+    ({
+      title,
+      description,
+      confirmLabel = 'Confirm',
+      danger = false,
+    }: {
+      title: string
+      description: string
+      confirmLabel?: string
+      danger?: boolean
+    }) =>
       new Promise<boolean>((resolve) => {
         const id = toast.custom(
           () => (
@@ -55,7 +65,11 @@ export function UIProvider({ children }: { children: ReactNode }) {
                   Cancel
                 </button>
                 <button
-                  className="rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                  className={
+                    danger
+                      ? 'rounded-md bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700'
+                      : 'rounded-md bg-primary px-3 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90'
+                  }
                   onClick={() => {
                     toast.dismiss(id)
                     resolve(true)
